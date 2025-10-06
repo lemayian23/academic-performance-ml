@@ -244,6 +244,21 @@ async function showAnalytics() {
         .body(html_content)
 }
 
+// Add this new endpoint - Student Success Tips
+async fn get_success_tips() -> HttpResponse {
+    let tips = vec![
+        "🎯 Study at least 5 hours weekly for better results",
+        "📚 Maintain 80%+ attendance for higher pass rates", 
+        "⏰ Consistent daily study beats last-minute cramming",
+        "📝 Practice with past papers regularly",
+        "🔄 Review class notes within 24 hours",
+        "👥 Join study groups for difficult subjects",
+        "💤 Get 7-8 hours sleep for optimal memory retention"
+    ];
+    
+    HttpResponse::Ok().json(tips)
+}
+
 async fn start_api(
     model: linfa_logistic::FittedLogisticRegression<f64, bool>,
     model_info: ModelInfo,

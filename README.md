@@ -21,6 +21,11 @@ This project uses logistic regression to predict whether a student will pass or 
 - Real-time prediction API
 - Accuracy metrics and model information endpoints
 
+## 📈 Recent Updates
+
+- **Student Success Tips API** - Get evidence-based study recommendations
+- **Performance Analytics Dashboard** - View TUK student performance insights
+- **Enhanced Web Interface** - Better user experience for predictions
 ## 🛠️ Tech Stack
 
 - **Backend**: Rust, Actix-web
