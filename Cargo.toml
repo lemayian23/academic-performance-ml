@@ -2,6 +2,10 @@
 name = "student_classifier"
 version = "0.1.0"
 edition = "2021"
+description = "TUK Student Performance Predictor - ML-powered academic success forecasting"
+authors = ["Your Name <your.email@tukenya.ac.ke>"]
+license = "MIT"
+repository = "https://github.com/lemayian23/academic-performance-ml"
 
 [dependencies]
 ndarray = "0.15"

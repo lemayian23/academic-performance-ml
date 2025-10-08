@@ -1,10 +1,13 @@
-use ndarray::{Array2, s, Array1};
-use linfa::prelude::*;
-use linfa_logistic::LogisticRegression;
-use csv::Reader;
-use std::error::Error;
+mod data;
+mod model;
+
 use actix_web::{web, App, HttpResponse, HttpServer};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use std::error::Error;
+
+use crate::data::load_data;
+use crate::model::{train_model, ModelInfo, PredictResponse, AnalyticsData, PerformanceCategory, 
+                   StudentRecord, TrainedModel};
 
 #[derive(Deserialize)]
 struct PredictRequest {
@@ -12,64 +15,29 @@ struct PredictRequest {
     attendance: f64,
 }
 
-#[derive(Serialize)]
-struct PredictResponse {
-    prediction: String,
-    confidence: f64,
+// Prediction endpoint
+async fn predict(
+    req: web::Json<PredictRequest>,
+    model: web::Data<TrainedModel>,
+) -> HttpResponse {
+    let features = vec![req.hours, req.attendance];
+    let (prediction, confidence) = model.predict(&features);
+    
+    let response = PredictResponse {
+        prediction: if prediction { "Pass".to_string() } else { "Fail".to_string() },
+        confidence,
+    };
+    
+    HttpResponse::Ok().json(response)
 }
 
-#[derive(Serialize)]
-struct AnalyticsData {
-    total_students: usize,
-    pass_rate: f64,
-    avg_study_hours: f64,
-    avg_attendance: f64,
-    performance_breakdown: Vec<PerformanceCategory>,
-}
-
-#[derive(Serialize)]
-struct PerformanceCategory {
-    range: String,
-    count: usize,
-    pass_rate: f64,
-}
-
-#[derive(Serialize, Clone)]
-struct ModelInfo {
-    accuracy: f64,
-}
-
-// NEW: Batch prediction structures
-#[derive(Deserialize)]
-struct StudentRecord {
-    name: String,
-    hours: f64,
-    attendance: f64,
-}
-
-#[derive(Serialize)]
-struct BatchPrediction {
-    name: String,
-    hours: f64,
-    attendance: f64,
-    prediction: String,
-    confidence: f64,
-    recommendation: String,
-}
-
-#[derive(Serialize)]
-struct BatchResult {
-    total_students: usize,
-    predictions: Vec<BatchPrediction>,
-    summary: BatchSummary,
-}
-
-#[derive(Serialize)]
-struct BatchSummary {
-    pass_count: usize,
-    fail_count: usize,
-    avg_confidence: f64,
-    pass_rate: f64,
+// Batch prediction endpoint
+async fn batch_predict(
+    web::Json(students): web::Json<Vec<StudentRecord>>,
+    model: web::Data<TrainedModel>,
+) -> HttpResponse {
+    let batch_result = model.batch_predict(students);
+    HttpResponse::Ok().json(batch_result)
 }
 
 // Analytics endpoint
@@ -106,84 +74,6 @@ async fn get_analytics() -> HttpResponse {
     HttpResponse::Ok().json(analytics)
 }
 
-// NEW: Batch prediction endpoint
-async fn batch_predict(
-    web::Json(students): web::Json<Vec<StudentRecord>>,
-    model: web::Data<linfa_logistic::FittedLogisticRegression<f64, bool>>,
-) -> HttpResponse {
-    let mut predictions = Vec::new();
-    let mut pass_count = 0;
-    let mut total_confidence = 0.0;
-
-    for student in students {
-        let features = Array2::from_shape_vec((1, 2), vec![student.hours, student.attendance]).unwrap();
-        let prediction = model.predict(&features);
-        let probabilities = model.predict_probabilities(&features);
-        let confidence = if prediction[0] { probabilities[[0]] } else { 1.0 - probabilities[[0]] };
-        
-        let will_pass = prediction[0];
-        if will_pass { pass_count += 1; }
-        total_confidence += confidence;
-
-        let recommendation = if will_pass {
-            if student.hours >= 6.0 && student.attendance >= 80.0 {
-                "Maintain current performance".to_string()
-            } else {
-                "Good progress, aim for 6+ hours and 80%+ attendance".to_string()
-            }
-        } else {
-            "Needs improvement - increase study time and attendance".to_string()
-        };
-
-        predictions.push(BatchPrediction {
-            name: student.name,
-            hours: student.hours,
-            attendance: student.attendance,
-            prediction: if will_pass { "Pass".to_string() } else { "Fail".to_string() },
-            confidence,
-            recommendation,
-        });
-    }
-
-    let total_students = predictions.len();
-    let batch_result = BatchResult {
-        total_students,
-        predictions,
-        summary: BatchSummary {
-            pass_count,
-            fail_count: total_students - pass_count,
-            avg_confidence: if total_students > 0 { total_confidence / total_students as f64 } else { 0.0 },
-            pass_rate: if total_students > 0 { pass_count as f64 / total_students as f64 } else { 0.0 },
-        },
-    };
-
-    HttpResponse::Ok().json(batch_result)
-}
-
-// Prediction endpoint with real confidence
-async fn predict(
-    req: web::Json<PredictRequest>,
-    model: web::Data<linfa_logistic::FittedLogisticRegression<f64, bool>>,
-) -> HttpResponse {
-    let features = Array2::from_shape_vec((1, 2), vec![req.hours, req.attendance]).unwrap();
-    let prediction = model.predict(&features);
-    
-    // Calculate actual confidence from probabilities
-    let probabilities = model.predict_probabilities(&features);
-    let confidence = if prediction[0] {
-        probabilities[[0]] // Probability of pass
-    } else {
-        1.0 - probabilities[[0]] // Probability of fail
-    };
-
-    let response = PredictResponse {
-        prediction: if prediction[0] { "Pass".to_string() } else { "Fail".to_string() },
-        confidence,
-    };
-    
-    HttpResponse::Ok().json(response)
-}
-
 // Model info endpoint
 async fn get_model_info(model_data: web::Data<ModelInfo>) -> HttpResponse {
     HttpResponse::Ok().json(model_data.as_ref().clone())
@@ -191,7 +81,7 @@ async fn get_model_info(model_data: web::Data<ModelInfo>) -> HttpResponse {
 
 // Health check endpoint
 async fn health_check() -> HttpResponse {
-    HttpResponse::Ok().body("Student Classifier API is running!")
+    HttpResponse::Ok().body("TUK Student Classifier API is running!")
 }
 
 // Success tips endpoint
@@ -238,7 +128,7 @@ async fn serve_homepage() -> HttpResponse {
     </head>
     <body>
         <div class="container">
-            <h1>🎓 The Technical University of Kenya Student Performance Predictor</h1>
+            <h1> The Technical University of Kenya Student Performance Predictor</h1>
             <p>Enter student details to predict academic performance based on study patterns:</p>
             
             <div class="form-group">
@@ -251,47 +141,47 @@ async fn serve_homepage() -> HttpResponse {
                 <input type="number" id="attendance" step="0.1" placeholder="e.g., 85.0" value="85.0">
             </div>
             
-            <button onclick="predict()">📊 Predict Academic Result</button>
+            <button onclick="predict()"> Predict Academic Result</button>
             
             <div id="result" class="result"></div>
 
             <div class="button-group">
-                <button onclick="showAnalytics()" style="background: #28a745;">📈 Performance Analytics</button>
-                <button onclick="showTips()" style="background: #6f42c1;">💡 Success Tips</button>
-                <button onclick="showModelInfo()" style="background: #fd7e14;">🤖 Model Info</button>
+                <button onclick="showAnalytics()" style="background: #28a745;"> Performance Analytics</button>
+                <button onclick="showTips()" style="background: #6f42c1;"> Success Tips</button>
+                <button onclick="showModelInfo()" style="background: #fd7e14;"> Model Info</button>
             </div>
 
-            <!-- NEW: Batch Prediction Section -->
+            <!-- Batch Prediction Section -->
             <div class="feature-section">
-                <h3>📁 Batch Student Prediction (NEW)</h3>
+                <h3> Batch Student Prediction (NEW)</h3>
                 <p>Upload multiple students at once for bulk predictions (CSV format):</p>
                 
                 <textarea id="batchData" placeholder="Enter CSV data:
 name,hours,attendance
-John Doe,6.5,85.0
-Jane Smith,4.0,70.0
-Mike Johnson,8.0,92.0
-Sarah Williams,3.0,65.0
-David Brown,7.5,88.0" 
+Denis Lemayian,6.5,85.0
+Saitoti Smith,4.0,70.0
+Kukutia Johnson,8.0,92.0
+Kirionki Williams,3.0,65.0
+David Lemoita,7.5,88.0" 
                     rows="8" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-family: monospace;"></textarea>
                 
-                <button onclick="processBatch()" style="background: #28a745; margin-top: 10px;">📊 Process Batch Predictions</button>
+                <button onclick="processBatch()" style="background: #28a745; margin-top: 10px;"> Process Batch Predictions</button>
                 
                 <div id="batch-result" class="result" style="display: none;"></div>
             </div>
 
             <div id="analytics" class="result info" style="display: none;">
-                <h3>📈 TUK Student Performance Analytics</h3>
+                <h3> TUK Student Performance Analytics</h3>
                 <div id="analytics-content"></div>
             </div>
 
             <div id="tips" class="result info" style="display: none;">
-                <h3>💡 TUK Student Success Tips</h3>
+                <h3> TUK Student Success Tips</h3>
                 <div id="tips-content"></div>
             </div>
 
             <div id="model-info" class="result info" style="display: none;">
-                <h3>🤖 Model Information</h3>
+                <h3> Model Information</h3>
                 <div id="model-info-content"></div>
             </div>
         </div>
@@ -325,13 +215,11 @@ David Brown,7.5,88.0"
                 }
             }
 
-            // NEW: Batch prediction function
             async function processBatch() {
                 const batchData = document.getElementById('batchData').value;
                 const resultDiv = document.getElementById('batch-result');
                 
                 try {
-                    // Parse CSV data
                     const lines = batchData.trim().split('\n');
                     const students = [];
                     
@@ -363,7 +251,7 @@ David Brown,7.5,88.0"
                     resultDiv.style.display = 'block';
                     resultDiv.className = 'result info';
                     resultDiv.innerHTML = `
-                        <h3>📊 Batch Prediction Results</h3>
+                        <h3> Batch Prediction Results</h3>
                         <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
                             <h4>Summary</h4>
                             <p><strong>Total Students:</strong> ${data.total_students}</p>
@@ -509,7 +397,7 @@ David Brown,7.5,88.0"
 }
 
 async fn start_api(
-    model: linfa_logistic::FittedLogisticRegression<f64, bool>,
+    model: TrainedModel,
     model_info: ModelInfo,
 ) -> std::io::Result<()> {
     let model_data = web::Data::new(model);
@@ -521,7 +409,7 @@ async fn start_api(
             .app_data(info_data.clone())
             .route("/", web::get().to(serve_homepage))
             .route("/predict", web::post().to(predict))
-            .route("/batch-predict", web::post().to(batch_predict)) // NEW: Batch prediction route
+            .route("/batch-predict", web::post().to(batch_predict))
             .route("/model/info", web::get().to(get_model_info))
             .route("/health", web::get().to(health_check))
             .route("/analytics", web::get().to(get_analytics))
@@ -532,30 +420,6 @@ async fn start_api(
     .await
 }
 
-fn load_data(path: &str) -> Result<Array2<f64>, Box<dyn Error>> {
-    let mut rdr = Reader::from_path(path)?;
-    let mut data = Vec::new();
-
-    for result in rdr.records() {
-        let record = result?;
-        let hours: f64 = record[0].parse()?;
-        let attendance: f64 = record[1].parse()?;
-        let pass_fail: f64 = record[2].parse()?;
-        data.push(vec![hours, attendance, pass_fail]);
-    }
-
-    let num_rows = data.len();
-    let flat_data = data.into_iter().flatten().collect::<Vec<f64>>();
-    Ok(Array2::from_shape_vec((num_rows, 3), flat_data)?)
-}
-
-fn calculate_accuracy(predictions: &Array1<bool>, targets: &Array1<bool>) -> f64 {
-    predictions.iter()
-        .zip(targets.iter())
-        .filter(|(&pred, &actual)| pred == actual)
-        .count() as f64 / targets.len() as f64
-}
-
 #[actix_web::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     println!("🚀 Loading TUK student data...");
@@ -563,46 +427,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let data = load_data("data/students.csv")?;
     println!("Loaded {} student records", data.nrows());
 
-    let targets = data.column(2).mapv(|x| x > 0.5).into_raw_vec();
-    let pass_count = targets.iter().filter(|&&x| x).count();
-    let fail_count = targets.iter().filter(|&&x| !x).count();
-    println!("Class distribution: {} Pass, {} Fail", pass_count, fail_count);
-
-    let (features, targets) = if pass_count < 2 || fail_count < 2 {
-        println!("⚠️  Adding synthetic data for better training...");
-        let mut synthetic_data = vec![
-            vec![1.0, 40.0, 0.0],
-            vec![2.0, 50.0, 0.0],
-            vec![8.0, 95.0, 1.0],
-            vec![9.0, 90.0, 1.0],
-        ];
-        
-        for i in 0..data.nrows() {
-            synthetic_data.push(vec![data[[i, 0]], data[[i, 1]], data[[i, 2]]]);
-        }
-        
-        let num_rows = synthetic_data.len();
-        let flat_data: Vec<f64> = synthetic_data.into_iter().flatten().collect();
-        let enhanced_data = Array2::from_shape_vec((num_rows, 3), flat_data)?;
-        
-        (enhanced_data.slice(s![.., ..2]).to_owned(), 
-         Array1::from_vec(enhanced_data.column(2).mapv(|x| x > 0.5).into_raw_vec()))
-    } else {
-        (data.slice(s![.., ..2]).to_owned(), Array1::from_vec(targets))
-    };
-
-    println!("📊 Training logistic regression model...");
-    let dataset = Dataset::new(features.clone(), targets.clone());
-    let model = LogisticRegression::default()
-        .max_iterations(100)
-        .fit(&dataset)
-        .expect("Failed to train model");
-
-    let predictions = model.predict(&features);
-    let accuracy = calculate_accuracy(&predictions, &targets);
-
-    println!("🎯 Model trained successfully!");
-    println!("   Accuracy: {:.2}%", accuracy * 100.0);
+    let (model, accuracy) = train_model(data)?;
+    println!("🎯 Model trained successfully! Accuracy: {:.2}%", accuracy * 100.0);
 
     let model_info = ModelInfo { accuracy };
 
