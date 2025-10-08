@@ -39,6 +39,39 @@ struct ModelInfo {
     accuracy: f64,
 }
 
+// NEW: Batch prediction structures
+#[derive(Deserialize)]
+struct StudentRecord {
+    name: String,
+    hours: f64,
+    attendance: f64,
+}
+
+#[derive(Serialize)]
+struct BatchPrediction {
+    name: String,
+    hours: f64,
+    attendance: f64,
+    prediction: String,
+    confidence: f64,
+    recommendation: String,
+}
+
+#[derive(Serialize)]
+struct BatchResult {
+    total_students: usize,
+    predictions: Vec<BatchPrediction>,
+    summary: BatchSummary,
+}
+
+#[derive(Serialize)]
+struct BatchSummary {
+    pass_count: usize,
+    fail_count: usize,
+    avg_confidence: f64,
+    pass_rate: f64,
+}
+
 // Analytics endpoint
 async fn get_analytics() -> HttpResponse {
     let analytics = AnalyticsData {
@@ -71,6 +104,60 @@ async fn get_analytics() -> HttpResponse {
     };
     
     HttpResponse::Ok().json(analytics)
+}
+
+// NEW: Batch prediction endpoint
+async fn batch_predict(
+    web::Json(students): web::Json<Vec<StudentRecord>>,
+    model: web::Data<linfa_logistic::FittedLogisticRegression<f64, bool>>,
+) -> HttpResponse {
+    let mut predictions = Vec::new();
+    let mut pass_count = 0;
+    let mut total_confidence = 0.0;
+
+    for student in students {
+        let features = Array2::from_shape_vec((1, 2), vec![student.hours, student.attendance]).unwrap();
+        let prediction = model.predict(&features);
+        let probabilities = model.predict_probabilities(&features);
+        let confidence = if prediction[0] { probabilities[[0]] } else { 1.0 - probabilities[[0]] };
+        
+        let will_pass = prediction[0];
+        if will_pass { pass_count += 1; }
+        total_confidence += confidence;
+
+        let recommendation = if will_pass {
+            if student.hours >= 6.0 && student.attendance >= 80.0 {
+                "Maintain current performance".to_string()
+            } else {
+                "Good progress, aim for 6+ hours and 80%+ attendance".to_string()
+            }
+        } else {
+            "Needs improvement - increase study time and attendance".to_string()
+        };
+
+        predictions.push(BatchPrediction {
+            name: student.name,
+            hours: student.hours,
+            attendance: student.attendance,
+            prediction: if will_pass { "Pass".to_string() } else { "Fail".to_string() },
+            confidence,
+            recommendation,
+        });
+    }
+
+    let total_students = predictions.len();
+    let batch_result = BatchResult {
+        total_students,
+        predictions,
+        summary: BatchSummary {
+            pass_count,
+            fail_count: total_students - pass_count,
+            avg_confidence: if total_students > 0 { total_confidence / total_students as f64 } else { 0.0 },
+            pass_rate: if total_students > 0 { pass_count as f64 / total_students as f64 } else { 0.0 },
+        },
+    };
+
+    HttpResponse::Ok().json(batch_result)
 }
 
 // Prediction endpoint with real confidence
@@ -130,11 +217,11 @@ async fn serve_homepage() -> HttpResponse {
     <head>
         <title>The Technical University of Kenya - Student Performance Predictor</title>
         <style>
-            body { font-family: Arial, sans-serif; max-width: 700px; margin: 50px auto; padding: 20px; }
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
             .container { background: #f5f5f5; padding: 25px; border-radius: 10px; }
             .form-group { margin: 15px 0; }
             label { display: block; margin-bottom: 5px; font-weight: bold; }
-            input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
+            input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
             button { background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
             button:hover { background: #0056b3; }
             .result { margin-top: 20px; padding: 20px; border-radius: 5px; display: none; }
@@ -143,6 +230,10 @@ async fn serve_homepage() -> HttpResponse {
             .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
             .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
             .button-group { text-align: center; margin: 20px 0; }
+            .feature-section { background: #e8f5e8; padding: 20px; border-radius: 10px; margin: 20px 0; }
+            .prediction-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+            .prediction-table th, .prediction-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
+            .prediction-table th { background: #f8f9fa; }
         </style>
     </head>
     <body>
@@ -168,6 +259,25 @@ async fn serve_homepage() -> HttpResponse {
                 <button onclick="showAnalytics()" style="background: #28a745;">📈 Performance Analytics</button>
                 <button onclick="showTips()" style="background: #6f42c1;">💡 Success Tips</button>
                 <button onclick="showModelInfo()" style="background: #fd7e14;">🤖 Model Info</button>
+            </div>
+
+            <!-- NEW: Batch Prediction Section -->
+            <div class="feature-section">
+                <h3>📁 Batch Student Prediction (NEW)</h3>
+                <p>Upload multiple students at once for bulk predictions (CSV format):</p>
+                
+                <textarea id="batchData" placeholder="Enter CSV data:
+name,hours,attendance
+John Doe,6.5,85.0
+Jane Smith,4.0,70.0
+Mike Johnson,8.0,92.0
+Sarah Williams,3.0,65.0
+David Brown,7.5,88.0" 
+                    rows="8" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-family: monospace;"></textarea>
+                
+                <button onclick="processBatch()" style="background: #28a745; margin-top: 10px;">📊 Process Batch Predictions</button>
+                
+                <div id="batch-result" class="result" style="display: none;"></div>
             </div>
 
             <div id="analytics" class="result info" style="display: none;">
@@ -212,6 +322,90 @@ async fn serve_homepage() -> HttpResponse {
                     resultDiv.style.display = 'block';
                     resultDiv.className = 'result fail';
                     resultDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+                }
+            }
+
+            // NEW: Batch prediction function
+            async function processBatch() {
+                const batchData = document.getElementById('batchData').value;
+                const resultDiv = document.getElementById('batch-result');
+                
+                try {
+                    // Parse CSV data
+                    const lines = batchData.trim().split('\n');
+                    const students = [];
+                    
+                    for (let i = 1; i < lines.length; i++) {
+                        if (lines[i].trim()) {
+                            const values = lines[i].split(',').map(v => v.trim());
+                            if (values.length >= 3) {
+                                students.push({
+                                    name: values[0],
+                                    hours: parseFloat(values[1]),
+                                    attendance: parseFloat(values[2])
+                                });
+                            }
+                        }
+                    }
+                    
+                    if (students.length === 0) {
+                        throw new Error('No valid student data found. Please check CSV format.');
+                    }
+                    
+                    const response = await fetch('/batch-predict', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(students)
+                    });
+                    
+                    const data = await response.json();
+                    
+                    resultDiv.style.display = 'block';
+                    resultDiv.className = 'result info';
+                    resultDiv.innerHTML = `
+                        <h3>📊 Batch Prediction Results</h3>
+                        <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                            <h4>Summary</h4>
+                            <p><strong>Total Students:</strong> ${data.total_students}</p>
+                            <p><strong>Pass Rate:</strong> ${(data.summary.pass_rate * 100).toFixed(1)}%</p>
+                            <p><strong>Pass Count:</strong> ${data.summary.pass_count} | <strong>Fail Count:</strong> ${data.summary.fail_count}</p>
+                            <p><strong>Average Confidence:</strong> ${(data.summary.avg_confidence * 100).toFixed(1)}%</p>
+                        </div>
+                        
+                        <h4>Individual Predictions</h4>
+                        <table class="prediction-table">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Hours</th>
+                                    <th>Attendance</th>
+                                    <th>Prediction</th>
+                                    <th>Confidence</th>
+                                    <th>Recommendation</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.predictions.map(pred => `
+                                    <tr>
+                                        <td>${pred.name}</td>
+                                        <td>${pred.hours}</td>
+                                        <td>${pred.attendance}%</td>
+                                        <td style="color: ${pred.prediction === 'Pass' ? '#28a745' : '#dc3545'}; font-weight: bold;">
+                                            ${pred.prediction}
+                                        </td>
+                                        <td>${(pred.confidence * 100).toFixed(1)}%</td>
+                                        <td>${pred.recommendation}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    
+                    resultDiv.scrollIntoView({behavior: 'smooth'});
+                } catch (error) {
+                    resultDiv.style.display = 'block';
+                    resultDiv.className = 'result fail';
+                    resultDiv.innerHTML = `<p>Error processing batch: ${error.message}</p>`;
                 }
             }
 
@@ -327,6 +521,7 @@ async fn start_api(
             .app_data(info_data.clone())
             .route("/", web::get().to(serve_homepage))
             .route("/predict", web::post().to(predict))
+            .route("/batch-predict", web::post().to(batch_predict)) // NEW: Batch prediction route
             .route("/model/info", web::get().to(get_model_info))
             .route("/health", web::get().to(health_check))
             .route("/analytics", web::get().to(get_analytics))
@@ -413,6 +608,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("🌐 Starting TUK Student Predictor API on http://127.0.0.1:8080");
     println!("   Visit http://127.0.0.1:8080 in your browser!");
+    println!("   NEW: Batch prediction feature available!");
     
     start_api(model, model_info).await?;
 
