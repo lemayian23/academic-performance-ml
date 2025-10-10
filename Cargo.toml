@@ -2,17 +2,14 @@
 name = "student_classifier"
 version = "0.1.0"
 edition = "2021"
-description = "TUK Student Performance Predictor - ML-powered academic success forecasting"
-authors = ["Your Name <your.email@tukenya.ac.ke>"]
-license = "MIT"
-repository = "https://github.com/lemayian23/academic-performance-ml"
 
 [dependencies]
+actix-web = "4.4"
 ndarray = "0.15"
 linfa = "0.7"
 linfa-logistic = "0.7"
 csv = "1.2"
-actix-web = "4.4"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.0", features = ["full"] }
 serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }  # NEW
