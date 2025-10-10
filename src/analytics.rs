@@ -48,7 +48,6 @@ impl TrendsAnalyzer {
             .iter()
             .enumerate()
             .map(|(week, &(hours, attendance))| {
-                // Simple prediction logic based on thresholds
                 let predicted_pass = hours >= 5.0 && attendance >= 75.0;
                 let confidence = ((hours * 0.1) + (attendance * 0.01)).min(1.0);
                 
@@ -78,7 +77,6 @@ impl TrendsAnalyzer {
         let mut weekly_summaries = Vec::new();
         let mut student_scores = HashMap::new();
 
-        // Analyze 4 weeks of data
         for week in 1..=4 {
             let mut total_hours = 0.0;
             let mut total_attendance = 0.0;
@@ -95,7 +93,6 @@ impl TrendsAnalyzer {
                         pass_count += 1;
                     }
 
-                    // Track student performance for ranking
                     let score = student_scores.entry(student_name.clone()).or_insert(0.0);
                     *score += (hours * 0.5) + (attendance * 0.5);
                 }
@@ -110,7 +107,6 @@ impl TrendsAnalyzer {
             });
         }
 
-        // Identify top performers and at-risk students
         let mut sorted_students: Vec<(String, f64)> = student_scores.into_iter().collect();
         sorted_students.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
@@ -182,4 +178,23 @@ impl TrendsAnalyzer {
 
         (hours_improvement + attendance_improvement) / 2.0
     }
+}
+
+// Mock data generator for demo
+pub fn generate_mock_trends_data() -> HashMap<String, Vec<(f64, f64)>> {
+    let mut data = HashMap::new();
+    
+    let students = vec![
+        ("Denis Lemayian", vec![(4.5, 70.0), (5.0, 75.0), (5.5, 80.0), (6.0, 85.0)]),
+        ("Saitoti Smith", vec![(6.0, 85.0), (6.5, 88.0), (7.0, 90.0), (7.5, 92.0)]),
+        ("Kukutia Johnson", vec![(3.0, 60.0), (3.5, 65.0), (4.0, 70.0), (4.5, 72.0)]),
+        ("Kirionki Williams", vec![(5.5, 78.0), (5.0, 75.0), (4.5, 72.0), (4.0, 68.0)]),
+        ("David Lemoita", vec![(7.0, 88.0), (7.5, 90.0), (8.0, 92.0), (8.5, 94.0)]),
+    ];
+
+    for (name, weekly_data) in students {
+        data.insert(name.to_string(), weekly_data);
+    }
+
+    data
 }
