@@ -1,6 +1,6 @@
 mod data;
 mod model;
-mod analytics;  // NEW: Add analytics module
+mod analytics;
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::Deserialize;
@@ -9,7 +9,7 @@ use std::error::Error;
 use crate::data::load_data;
 use crate::model::{train_model, ModelInfo, PredictResponse, AnalyticsData, PerformanceCategory, 
                    StudentRecord, TrainedModel};
-use crate::analytics::{TrendsAnalyzer, StudentTrend, ClassTrends, generate_mock_trends_data};  // NEW: Import analytics
+use crate::analytics::{TrendsAnalyzer, StudentTrend, ClassTrends, generate_mock_trends_data};
 
 #[derive(Deserialize)]
 struct PredictRequest {
@@ -17,7 +17,7 @@ struct PredictRequest {
     attendance: f64,
 }
 
-// NEW: Student trends request
+// Student trends request
 #[derive(Deserialize)]
 struct StudentTrendsRequest {
     student_name: String,
@@ -31,7 +31,7 @@ struct WeeklyData {
     attendance: f64,
 }
 
-// NEW: Student trends endpoint
+// Student trends endpoint
 async fn get_student_trends(
     web::Json(req): web::Json<StudentTrendsRequest>,
 ) -> HttpResponse {
@@ -46,7 +46,7 @@ async fn get_student_trends(
     HttpResponse::Ok().json(trend)
 }
 
-// NEW: Class trends endpoint
+// Class trends endpoint
 async fn get_class_trends() -> HttpResponse {
     let analyzer = TrendsAnalyzer::new();
     let mock_data = generate_mock_trends_data();
@@ -54,7 +54,7 @@ async fn get_class_trends() -> HttpResponse {
     HttpResponse::Ok().json(class_trends)
 }
 
-// NEW: Trends dashboard endpoint
+// Trends dashboard endpoint
 async fn get_trends_dashboard() -> HttpResponse {
     let analyzer = TrendsAnalyzer::new();
     let mock_data = generate_mock_trends_data();
@@ -76,6 +76,7 @@ async fn get_trends_dashboard() -> HttpResponse {
     HttpResponse::Ok().json(dashboard_data)
 }
 
+// ... (KEEP ALL YOUR EXISTING ENDPOINTS - they remain the same)
 // Prediction endpoint
 async fn predict(
     req: web::Json<PredictRequest>,
@@ -160,54 +161,67 @@ async fn get_success_tips() -> HttpResponse {
     HttpResponse::Ok().json(tips)
 }
 
-// Homepage endpoint
+// Homepage endpoint - UPDATED WITH CHART.JS
 async fn serve_homepage() -> HttpResponse {
     let html_content = r#"
     <!DOCTYPE html>
     <html>
     <head>
         <title>The Technical University of Kenya - Student Performance Predictor</title>
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
         <style>
-            body { font-family: Arial, sans-serif; max-width: 1000px; margin: 50px auto; padding: 20px; }
-            .container { background: #f5f5f5; padding: 25px; border-radius: 10px; }
-            .form-group { margin: 15px 0; }
-            label { display: block; margin-bottom: 5px; font-weight: bold; }
-            input, textarea { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; }
-            button { background: #007bff; color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; margin: 5px; }
-            button:hover { background: #0056b3; }
-            .result { margin-top: 20px; padding: 20px; border-radius: 5px; display: none; }
-            .pass { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
-            .fail { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
-            .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
-            .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
-            .button-group { text-align: center; margin: 20px 0; }
-            .feature-section { background: #e8f5e8; padding: 20px; border-radius: 10px; margin: 20px 0; }
-            .prediction-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            .prediction-table th, .prediction-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-            .prediction-table th { background: #f8f9fa; }
-            .trends-section { background: #fff3e6; padding: 20px; border-radius: 10px; margin: 20px 0; }
-            .trend-card { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #007bff; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; background: #f8f9fa; }
+            .container { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #007bff; padding-bottom: 20px; }
+            .form-group { margin: 20px 0; }
+            label { display: block; margin-bottom: 8px; font-weight: 600; color: #495057; }
+            input, textarea { width: 100%; padding: 12px; border: 2px solid #e9ecef; border-radius: 8px; font-size: 16px; transition: border-color 0.3s; }
+            input:focus, textarea:focus { border-color: #007bff; outline: none; }
+            button { background: #007bff; color: white; padding: 14px 28px; border: none; border-radius: 8px; cursor: pointer; margin: 8px; font-size: 16px; font-weight: 600; transition: all 0.3s; }
+            button:hover { background: #0056b3; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+            .result { margin-top: 25px; padding: 25px; border-radius: 10px; display: none; border-left: 5px solid; }
+            .pass { background: #d4edda; color: #155724; border-left-color: #28a745; }
+            .fail { background: #f8d7da; color: #721c24; border-left-color: #dc3545; }
+            .warning { background: #fff3cd; color: #856404; border-left-color: #ffc107; }
+            .info { background: #d1ecf1; color: #0c5460; border-left-color: #17a2b8; }
+            .button-group { text-align: center; margin: 30px 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
+            .feature-section { background: #e8f5e8; padding: 25px; border-radius: 12px; margin: 25px 0; border: 2px solid #28a745; }
+            .trends-section { background: #fff3e6; padding: 25px; border-radius: 12px; margin: 25px 0; border: 2px solid #fd7e14; }
+            .prediction-table { width: 100%; border-collapse: collapse; margin: 20px 0; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .prediction-table th { background: #343a40; color: white; padding: 15px; text-align: left; }
+            .prediction-table td { padding: 12px; border-bottom: 1px solid #dee2e6; }
+            .prediction-table tr:hover { background: #f8f9fa; }
+            .chart-container { background: white; padding: 20px; border-radius: 10px; margin: 20px 0; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+            .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+            @media (max-width: 768px) { .chart-grid { grid-template-columns: 1fr; } }
+            .trend-card { background: white; padding: 20px; margin: 15px 0; border-radius: 10px; border-left: 5px solid; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
             .improving { border-left-color: #28a745; }
             .declining { border-left-color: #dc3545; }
             .stable { border-left-color: #ffc107; }
+            .metric-card { background: white; padding: 20px; border-radius: 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-top: 4px solid; }
+            .metric-value { font-size: 2.5em; font-weight: bold; margin: 10px 0; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1>🎓 The Technical University of Kenya Student Performance Predictor</h1>
-            <p>Enter student details to predict academic performance based on study patterns:</p>
+            <div class="header">
+                <h1 style="color: #007bff; margin: 0;">🎓 The Technical University of Kenya</h1>
+                <h2 style="color: #495057; margin: 10px 0 0 0;">Student Performance Analytics Dashboard</h2>
+            </div>
             
             <div class="form-group">
-                <label for="hours">Weekly Study Hours:</label>
+                <label for="hours">📚 Weekly Study Hours:</label>
                 <input type="number" id="hours" step="0.1" placeholder="e.g., 6.0" value="6.0">
             </div>
             
             <div class="form-group">
-                <label for="attendance">Class Attendance (%):</label>
+                <label for="attendance">🏫 Class Attendance (%):</label>
                 <input type="number" id="attendance" step="0.1" placeholder="e.g., 85.0" value="85.0">
             </div>
             
-            <button onclick="predict()">📊 Predict Academic Result</button>
+            <div style="text-align: center;">
+                <button onclick="predict()" style="background: linear-gradient(135deg, #007bff, #0056b3);">📊 Predict Academic Result</button>
+            </div>
             
             <div id="result" class="result"></div>
 
@@ -215,25 +229,25 @@ async fn serve_homepage() -> HttpResponse {
                 <button onclick="showAnalytics()" style="background: #28a745;">📈 Performance Analytics</button>
                 <button onclick="showTips()" style="background: #6f42c1;">💡 Success Tips</button>
                 <button onclick="showModelInfo()" style="background: #fd7e14;">🤖 Model Info</button>
-                <button onclick="showTrendsDashboard()" style="background: #e83e8c;">📊 Trends Dashboard</button>
+                <button onclick="loadTrendsDashboard()" style="background: #e83e8c;">📊 Interactive Dashboard</button>
+                <button onclick="loadClassTrends()" style="background: #20c997;">👥 Class Trends</button>
             </div>
 
-            <!-- NEW: Trends Dashboard Section -->
+            <!-- ENHANCED: Trends Dashboard Section with Charts -->
             <div class="trends-section">
-                <h3>📈 Student Performance Trends Dashboard (NEW)</h3>
-                <p>Track student progress and class performance over time:</p>
+                <h3 style="color: #e83e8c; margin-top: 0;">📈 Advanced Analytics Dashboard</h3>
+                <p>Professional-grade performance tracking with interactive visualizations:</p>
                 
-                <button onclick="loadTrendsDashboard()" style="background: #e83e8c;">🔄 Load Trends Dashboard</button>
-                <button onclick="loadClassTrends()" style="background: #20c997;">👥 Class Trends</button>
-                
-                <div id="trends-dashboard" class="result" style="display: none;"></div>
+                <div id="trends-dashboard" class="result" style="display: none;">
+                    <!-- Charts will be injected here by JavaScript -->
+                </div>
                 <div id="class-trends" class="result" style="display: none;"></div>
             </div>
 
             <!-- Batch Prediction Section -->
             <div class="feature-section">
-                <h3>📁 Batch Student Prediction</h3>
-                <p>Upload multiple students at once for bulk predictions (CSV format):</p>
+                <h3 style="color: #28a745; margin-top: 0;">📁 Batch Student Prediction</h3>
+                <p>Upload multiple students for bulk analysis:</p>
                 
                 <textarea id="batchData" placeholder="Enter CSV data:
 name,hours,attendance
@@ -242,9 +256,11 @@ Saitoti Smith,4.0,70.0
 Kukutia Johnson,8.0,92.0
 Kirionki Williams,3.0,65.0
 David Lemoita,7.5,88.0" 
-                    rows="8" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-family: monospace;"></textarea>
+                    rows="8"></textarea>
                 
-                <button onclick="processBatch()" style="background: #28a745; margin-top: 10px;">📊 Process Batch Predictions</button>
+                <div style="text-align: center;">
+                    <button onclick="processBatch()" style="background: #28a745;">📊 Process Batch Predictions</button>
+                </div>
                 
                 <div id="batch-result" class="result" style="display: none;"></div>
             </div>
@@ -266,168 +282,274 @@ David Lemoita,7.5,88.0"
         </div>
 
         <script>
-            // NEW: Trends Dashboard Functions
+            // Chart instances storage
+            let charts = {};
+
+            // ENHANCED: Load Trends Dashboard with Interactive Charts
             async function loadTrendsDashboard() {
                 const dashboardDiv = document.getElementById('trends-dashboard');
                 const classDiv = document.getElementById('class-trends');
                 classDiv.style.display = 'none';
                 
                 try {
+                    dashboardDiv.innerHTML = '<div style="text-align: center; padding: 40px;"><h3>📊 Loading Advanced Analytics...</h3><p>Generating professional visualizations</p></div>';
+                    dashboardDiv.style.display = 'block';
+                    
                     const response = await fetch('/trends-dashboard');
                     const data = await response.json();
                     
+                    // Destroy existing charts
+                    Object.values(charts).forEach(chart => chart.destroy());
+                    charts = {};
+                    
                     dashboardDiv.innerHTML = `
-                        <h3>📊 Performance Trends Dashboard</h3>
-                        <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
-                            <h4>Class Overview</h4>
-                            <p><strong>Total Students:</strong> ${data.class_trends.total_students}</p>
-                            <p><strong>Average Improvement Score:</strong> ${data.class_trends.average_improvement.toFixed(2)}</p>
-                            <p><strong>Top Performers:</strong> ${data.class_trends.top_performers.join(', ')}</p>
-                            <p><strong>Students Needing Support:</strong> ${data.class_trends.at_risk_students.join(', ')}</p>
+                        <div style="margin-bottom: 30px;">
+                            <h3 style="color: #e83e8c; border-bottom: 2px solid #e83e8c; padding-bottom: 10px;">📊 Performance Analytics Dashboard</h3>
+                            
+                            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin: 20px 0;">
+                                <div class="metric-card" style="border-top-color: #007bff;">
+                                    <div style="font-size: 0.9em; color: #6c757d;">Total Students</div>
+                                    <div class="metric-value" style="color: #007bff;">${data.class_trends.total_students}</div>
+                                </div>
+                                <div class="metric-card" style="border-top-color: #28a745;">
+                                    <div style="font-size: 0.9em; color: #6c757d;">Avg Improvement</div>
+                                    <div class="metric-value" style="color: #28a745;">${data.class_trends.average_improvement.toFixed(1)}</div>
+                                </div>
+                                <div class="metric-card" style="border-top-color: #ffc107;">
+                                    <div style="font-size: 0.9em; color: #6c757d;">Top Performers</div>
+                                    <div class="metric-value" style="color: #ffc107; font-size: 1.8em;">${data.class_trends.top_performers.length}</div>
+                                </div>
+                                <div class="metric-card" style="border-top-color: #dc3545;">
+                                    <div style="font-size: 0.9em; color: #6c757d;">Need Support</div>
+                                    <div class="metric-value" style="color: #dc3545; font-size: 1.8em;">${data.class_trends.at_risk_students.length}</div>
+                                </div>
+                            </div>
                         </div>
-                        
-                        <h4>Weekly Class Performance</h4>
-                        <table class="prediction-table">
-                            <thead>
-                                <tr>
-                                    <th>Week</th>
-                                    <th>Avg Study Hours</th>
-                                    <th>Avg Attendance</th>
-                                    <th>Pass Rate</th>
-                                    <th>Total Predictions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${data.class_trends.weekly_summary.map(week => `
-                                    <tr>
-                                        <td>${week.week}</td>
-                                        <td>${week.avg_study_hours.toFixed(1)}h</td>
-                                        <td>${week.avg_attendance.toFixed(1)}%</td>
-                                        <td>${(week.pass_rate * 100).toFixed(1)}%</td>
-                                        <td>${week.total_predictions}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                        
-                        <h4>Individual Student Trends</h4>
-                        ${data.student_trends.map(student => `
+
+                        <div class="chart-grid">
+                            <div class="chart-container">
+                                <h4>📈 Class Performance Trends</h4>
+                                <canvas id="classPerformanceChart"></canvas>
+                            </div>
+                            <div class="chart-container">
+                                <h4>🎯 Pass Rate Evolution</h4>
+                                <canvas id="passRateChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="chart-container">
+                            <h4>👥 Student Performance Distribution</h4>
+                            <canvas id="studentPerformanceChart"></canvas>
+                        </div>
+
+                        <h4 style="margin-top: 30px;">🎓 Individual Student Analytics</h4>
+                        ${data.student_trends.map((student, index) => `
                             <div class="trend-card ${student.overall_trend.toLowerCase()}">
-                                <h5>${student.student_name}</h5>
-                                <p><strong>Trend:</strong> ${student.overall_trend} | <strong>Improvement Score:</strong> ${student.improvement_score.toFixed(1)}/10</p>
-                                <table class="prediction-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Week</th>
-                                            <th>Study Hours</th>
-                                            <th>Attendance</th>
-                                            <th>Prediction</th>
-                                            <th>Confidence</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        ${student.weekly_data.map(week => `
-                                            <tr>
-                                                <td>${week.week}</td>
-                                                <td>${week.study_hours}h</td>
-                                                <td>${week.attendance}%</td>
-                                                <td style="color: ${week.predicted_pass ? '#28a745' : '#dc3545'};">
-                                                    ${week.predicted_pass ? 'Pass' : 'Fail'}
-                                                </td>
-                                                <td>${(week.confidence * 100).toFixed(1)}%</td>
-                                            </tr>
-                                        `).join('')}
-                                    </tbody>
-                                </table>
+                                <div style="display: flex; justify-content: between; align-items: center; margin-bottom: 15px;">
+                                    <h5 style="margin: 0; color: #343a40;">${student.student_name}</h5>
+                                    <div style="display: flex; gap: 15px;">
+                                        <span style="background: ${student.overall_trend === 'Improving' ? '#28a745' : student.overall_trend === 'Declining' ? '#dc3545' : '#ffc107'}; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em;">
+                                            ${student.overall_trend}
+                                        </span>
+                                        <span style="background: #007bff; color: white; padding: 5px 10px; border-radius: 15px; font-size: 0.8em;">
+                                            Score: ${student.improvement_score.toFixed(1)}/10
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="studentChart-${index}"></canvas>
+                                </div>
                             </div>
                         `).join('')}
                         
-                        <div style="margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 5px;">
-                            <small>📅 Last updated: ${new Date(data.timestamp).toLocaleString()}</small>
+                        <div style="margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 5px; text-align: center;">
+                            <small>📅 Dashboard generated: ${new Date(data.timestamp).toLocaleString()}</small>
                         </div>
                     `;
                     
-                    dashboardDiv.style.display = 'block';
+                    // Initialize Charts
+                    initializeClassPerformanceChart(data.class_trends.chart_data);
+                    initializePassRateChart(data.class_trends.chart_data);
+                    initializeStudentPerformanceChart(data.class_trends.chart_data);
+                    data.student_trends.forEach((student, index) => {
+                        initializeStudentChart(student, index);
+                    });
+                    
                     dashboardDiv.scrollIntoView({behavior: 'smooth'});
                 } catch (error) {
                     dashboardDiv.style.display = 'block';
                     dashboardDiv.className = 'result fail';
-                    dashboardDiv.innerHTML = `<p>Error loading trends dashboard: ${error.message}</p>`;
+                    dashboardDiv.innerHTML = `<p>❌ Error loading dashboard: ${error.message}</p>`;
                 }
             }
 
-            async function loadClassTrends() {
-                const classDiv = document.getElementById('class-trends');
-                const dashboardDiv = document.getElementById('trends-dashboard');
-                dashboardDiv.style.display = 'none';
+            // Chart Initialization Functions
+            function initializeClassPerformanceChart(chartData) {
+                const ctx = document.getElementById('classPerformanceChart').getContext('2d');
+                charts.classPerformance = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: chartData.weeks,
+                        datasets: [
+                            {
+                                label: 'Avg Study Hours',
+                                data: chartData.avg_study_hours,
+                                borderColor: '#007bff',
+                                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            },
+                            {
+                                label: 'Avg Attendance %',
+                                data: chartData.avg_attendance,
+                                borderColor: '#28a745',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                tension: 0.4,
+                                fill: true
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            title: { display: true, text: 'Class Performance Metrics' },
+                            tooltip: { mode: 'index', intersect: false }
+                        },
+                        scales: {
+                            y: { beginAtZero: true, title: { display: true, text: 'Metrics' } }
+                        }
+                    }
+                });
+            }
+
+            function initializePassRateChart(chartData) {
+                const ctx = document.getElementById('passRateChart').getContext('2d');
+                charts.passRate = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: chartData.weeks,
+                        datasets: [{
+                            label: 'Pass Rate %',
+                            data: chartData.pass_rates,
+                            backgroundColor: chartData.pass_rates.map((rate, index) => 
+                                index > 0 && rate > chartData.pass_rates[index-1] ? '#28a745' : 
+                                index > 0 && rate < chartData.pass_rates[index-1] ? '#dc3545' : '#ffc107'
+                            ),
+                            borderColor: '#343a40',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: {
+                            title: { display: true, text: 'Weekly Pass Rate Evolution' }
+                        },
+                        scales: {
+                            y: { 
+                                beginAtZero: true, 
+                                max: 100,
+                                title: { display: true, text: 'Pass Rate %' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            function initializeStudentPerformanceChart(chartData) {
+                const ctx = document.getElementById('studentPerformanceChart').getContext('2d');
+                const sortedStudents = [...chartData.student_performance].sort((a, b) => b.overall_score - a.overall_score);
                 
-                try {
-                    const response = await fetch('/class-trends');
-                    const data = await response.json();
-                    
-                    classDiv.innerHTML = `
-                        <h3>👥 Class Performance Trends</h3>
-                        <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
-                            <h4>Class Summary</h4>
-                            <p><strong>Total Students:</strong> ${data.total_students}</p>
-                            <p><strong>Average Improvement:</strong> ${data.average_improvement.toFixed(2)}</p>
-                        </div>
-                        
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
-                            <div style="background: #d4edda; padding: 15px; border-radius: 8px;">
-                                <h5>🏆 Top Performers</h5>
-                                <ul>
-                                    ${data.top_performers.map(student => `<li>${student}</li>`).join('')}
-                                </ul>
-                            </div>
-                            <div style="background: #f8d7da; padding: 15px; border-radius: 8px;">
-                                <h5>⚠️ Needs Support</h5>
-                                <ul>
-                                    ${data.at_risk_students.map(student => `<li>${student}</li>`).join('')}
-                                </ul>
-                            </div>
-                        </div>
-                        
-                        <h4>Weekly Performance Metrics</h4>
-                        <table class="prediction-table">
-                            <thead>
-                                <tr>
-                                    <th>Week</th>
-                                    <th>Avg Study Hours</th>
-                                    <th>Avg Attendance</th>
-                                    <th>Pass Rate</th>
-                                    <th>Trend</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${data.weekly_summary.map((week, index) => {
-                                    const trend = index > 0 ? 
-                                        (week.pass_rate > data.weekly_summary[index-1].pass_rate ? '📈' : 
-                                         week.pass_rate < data.weekly_summary[index-1].pass_rate ? '📉' : '➡️') : '➡️';
-                                    return `
-                                        <tr>
-                                            <td>${week.week}</td>
-                                            <td>${week.avg_study_hours.toFixed(1)}h</td>
-                                            <td>${week.avg_attendance.toFixed(1)}%</td>
-                                            <td>${(week.pass_rate * 100).toFixed(1)}%</td>
-                                            <td>${trend}</td>
-                                        </tr>
-                                    `;
-                                }).join('')}
-                            </tbody>
-                        </table>
-                    `;
-                    
-                    classDiv.style.display = 'block';
-                    classDiv.scrollIntoView({behavior: 'smooth'});
-                } catch (error) {
-                    classDiv.style.display = 'block';
-                    classDiv.className = 'result fail';
-                    classDiv.innerHTML = `<p>Error loading class trends: ${error.message}</p>`;
-                }
+                charts.studentPerformance = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: sortedStudents.map(s => s.name),
+                        datasets: [{
+                            label: 'Overall Performance Score',
+                            data: sortedStudents.map(s => s.overall_score),
+                            backgroundColor: sortedStudents.map(s => 
+                                s.trend === 'Improving' ? '#28a745' : 
+                                s.trend === 'Declining' ? '#dc3545' : '#ffc107'
+                            ),
+                            borderColor: '#343a40',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        indexAxis: 'y',
+                        plugins: {
+                            title: { display: true, text: 'Student Performance Ranking' },
+                            tooltip: {
+                                callbacks: {
+                                    afterLabel: function(context) {
+                                        const student = sortedStudents[context.dataIndex];
+                                        return `Trend: ${student.trend}`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
             }
 
-            // Existing functions (keep all your existing functions: predict, processBatch, showAnalytics, showTips, showModelInfo)
+            function initializeStudentChart(student, index) {
+                const ctx = document.getElementById(`studentChart-${index}`).getContext('2d');
+                charts[`studentChart-${index}`] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: student.chart_data.labels,
+                        datasets: [
+                            {
+                                label: 'Study Hours',
+                                data: student.chart_data.study_hours,
+                                borderColor: '#007bff',
+                                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Attendance %',
+                                data: student.chart_data.attendance,
+                                borderColor: '#28a745',
+                                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                                yAxisID: 'y',
+                                tension: 0.4
+                            },
+                            {
+                                label: 'Confidence %',
+                                data: student.chart_data.confidence,
+                                borderColor: '#ffc107',
+                                backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                                yAxisID: 'y1',
+                                tension: 0.4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        interaction: { mode: 'index', intersect: false },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                                title: { display: true, text: 'Hours/Attendance' }
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                title: { display: true, text: 'Confidence %' },
+                                grid: { drawOnChartArea: false }
+                            }
+                        }
+                    }
+                });
+            }
+
+            // KEEP ALL YOUR EXISTING FUNCTIONS (predict, processBatch, showAnalytics, showTips, showModelInfo, loadClassTrends)
+            // They remain exactly the same as in your current main.rs
+
             async function predict() {
                 const hours = document.getElementById('hours').value;
                 const attendance = document.getElementById('attendance').value;
@@ -610,4 +732,149 @@ David Lemoita,7.5,88.0"
                 const contentDiv = document.getElementById('model-info-content');
                 
                 try {
-                    const response = await fetch
+                    const response = await fetch('/model/info');
+                    const data = await response.json();
+                    
+                    contentDiv.innerHTML = `
+                        <div style="background: white; padding: 15px; border-radius: 5px;">
+                            <p><strong>Model Accuracy:</strong> ${(data.accuracy * 100).toFixed(1)}%</p>
+                            <p><strong>Algorithm:</strong> Logistic Regression</p>
+                            <p><strong>Features:</strong> Study Hours, Attendance Percentage</p>
+                            <p><strong>Training Data:</strong> TUK Student Academic Records</p>
+                        </div>
+                    `;
+                    
+                    modelDiv.style.display = 'block';
+                    modelDiv.scrollIntoView({behavior: 'smooth'});
+                } catch (error) {
+                    contentDiv.innerHTML = `<p style="color: red;">Error loading model info: ${error.message}</p>`;
+                    modelDiv.style.display = 'block';
+                }
+            }
+
+            async function loadClassTrends() {
+                const classDiv = document.getElementById('class-trends');
+                const dashboardDiv = document.getElementById('trends-dashboard');
+                dashboardDiv.style.display = 'none';
+                
+                try {
+                    const response = await fetch('/class-trends');
+                    const data = await response.json();
+                    
+                    classDiv.innerHTML = `
+                        <h3>👥 Class Performance Trends</h3>
+                        <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                            <h4>Class Summary</h4>
+                            <p><strong>Total Students:</strong> ${data.total_students}</p>
+                            <p><strong>Average Improvement:</strong> ${data.average_improvement.toFixed(2)}</p>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+                            <div style="background: #d4edda; padding: 15px; border-radius: 8px;">
+                                <h5>🏆 Top Performers</h5>
+                                <ul>
+                                    ${data.top_performers.map(student => `<li>${student}</li>`).join('')}
+                                </ul>
+                            </div>
+                            <div style="background: #f8d7da; padding: 15px; border-radius: 8px;">
+                                <h5>⚠️ Needs Support</h5>
+                                <ul>
+                                    ${data.at_risk_students.map(student => `<li>${student}</li>`).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <h4>Weekly Performance Metrics</h4>
+                        <table class="prediction-table">
+                            <thead>
+                                <tr>
+                                    <th>Week</th>
+                                    <th>Avg Study Hours</th>
+                                    <th>Avg Attendance</th>
+                                    <th>Pass Rate</th>
+                                    <th>Trend</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.weekly_summary.map((week, index) => {
+                                    const trend = index > 0 ? 
+                                        (week.pass_rate > data.weekly_summary[index-1].pass_rate ? '📈' : 
+                                         week.pass_rate < data.weekly_summary[index-1].pass_rate ? '📉' : '➡️') : '➡️';
+                                    return `
+                                        <tr>
+                                            <td>${week.week}</td>
+                                            <td>${week.avg_study_hours.toFixed(1)}h</td>
+                                            <td>${week.avg_attendance.toFixed(1)}%</td>
+                                            <td>${(week.pass_rate * 100).toFixed(1)}%</td>
+                                            <td>${trend}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    
+                    classDiv.style.display = 'block';
+                    classDiv.scrollIntoView({behavior: 'smooth'});
+                } catch (error) {
+                    classDiv.style.display = 'block';
+                    classDiv.className = 'result fail';
+                    classDiv.innerHTML = `<p>Error loading class trends: ${error.message}</p>`;
+                }
+            }
+        </script>
+    </body>
+    </html>
+    "#;
+
+    HttpResponse::Ok().content_type("text/html").body(html_content)
+}
+
+// UPDATE: Add new routes to start_api function
+async fn start_api(
+    model: TrainedModel,
+    model_info: ModelInfo,
+) -> std::io::Result<()> {
+    let model_data = web::Data::new(model);
+    let info_data = web::Data::new(model_info);
+    
+    HttpServer::new(move || {
+        App::new()
+            .app_data(model_data.clone())
+            .app_data(info_data.clone())
+            .route("/", web::get().to(serve_homepage))
+            .route("/predict", web::post().to(predict))
+            .route("/batch-predict", web::post().to(batch_predict))
+            .route("/model/info", web::get().to(get_model_info))
+            .route("/health", web::get().to(health_check))
+            .route("/analytics", web::get().to(get_analytics))
+            .route("/tips", web::get().to(get_success_tips))
+            .route("/student-trends", web::post().to(get_student_trends))  // NEW
+            .route("/class-trends", web::get().to(get_class_trends))       // NEW
+            .route("/trends-dashboard", web::get().to(get_trends_dashboard)) // NEW
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await
+}
+
+#[actix_web::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    println!("🚀 Loading TUK student data...");
+    
+    let data = load_data("data/students.csv")?;
+    println!("Loaded {} student records", data.nrows());
+
+    let (model, accuracy) = train_model(data)?;
+    println!("🎯 Model trained successfully! Accuracy: {:.2}%", accuracy * 100.0);
+
+    let model_info = ModelInfo { accuracy };
+
+    println!("🌐 Starting TUK Student Predictor API on http://127.0.0.1:8080");
+    println!("   Visit http://127.0.0.1:8080 in your browser!");
+    println!("   NEW: Interactive Charts Dashboard available!");
+    
+    start_api(model, model_info).await?;
+
+    Ok(())
+}
