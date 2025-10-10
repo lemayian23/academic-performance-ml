@@ -1,5 +1,6 @@
 mod data;
 mod model;
+mod analytics;  // NEW: Add analytics module
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::Deserialize;
@@ -8,11 +9,71 @@ use std::error::Error;
 use crate::data::load_data;
 use crate::model::{train_model, ModelInfo, PredictResponse, AnalyticsData, PerformanceCategory, 
                    StudentRecord, TrainedModel};
+use crate::analytics::{TrendsAnalyzer, StudentTrend, ClassTrends, generate_mock_trends_data};  // NEW: Import analytics
 
 #[derive(Deserialize)]
 struct PredictRequest {
     hours: f64,
     attendance: f64,
+}
+
+// NEW: Student trends request
+#[derive(Deserialize)]
+struct StudentTrendsRequest {
+    student_name: String,
+    weekly_data: Vec<WeeklyData>,
+}
+
+#[derive(Deserialize)]
+struct WeeklyData {
+    week: usize,
+    study_hours: f64,
+    attendance: f64,
+}
+
+// NEW: Student trends endpoint
+async fn get_student_trends(
+    web::Json(req): web::Json<StudentTrendsRequest>,
+) -> HttpResponse {
+    let analyzer = TrendsAnalyzer::new();
+    
+    let historical_data: Vec<(f64, f64)> = req.weekly_data
+        .iter()
+        .map(|wd| (wd.study_hours, wd.attendance))
+        .collect();
+
+    let trend = analyzer.generate_student_trend(&req.student_name, historical_data);
+    HttpResponse::Ok().json(trend)
+}
+
+// NEW: Class trends endpoint
+async fn get_class_trends() -> HttpResponse {
+    let analyzer = TrendsAnalyzer::new();
+    let mock_data = generate_mock_trends_data();
+    let class_trends = analyzer.generate_class_trends(mock_data);
+    HttpResponse::Ok().json(class_trends)
+}
+
+// NEW: Trends dashboard endpoint
+async fn get_trends_dashboard() -> HttpResponse {
+    let analyzer = TrendsAnalyzer::new();
+    let mock_data = generate_mock_trends_data();
+    
+    let class_trends = analyzer.generate_class_trends(mock_data.clone());
+    
+    let mut student_trends = Vec::new();
+    for (student_name, data) in mock_data.iter().take(3) {
+        let trend = analyzer.generate_student_trend(student_name, data.clone());
+        student_trends.push(trend);
+    }
+
+    let dashboard_data = serde_json::json!({
+        "class_trends": class_trends,
+        "student_trends": student_trends,
+        "timestamp": chrono::Utc::now().to_rfc3339(),
+    });
+
+    HttpResponse::Ok().json(dashboard_data)
 }
 
 // Prediction endpoint
@@ -107,7 +168,7 @@ async fn serve_homepage() -> HttpResponse {
     <head>
         <title>The Technical University of Kenya - Student Performance Predictor</title>
         <style>
-            body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }
+            body { font-family: Arial, sans-serif; max-width: 1000px; margin: 50px auto; padding: 20px; }
             .container { background: #f5f5f5; padding: 25px; border-radius: 10px; }
             .form-group { margin: 15px 0; }
             label { display: block; margin-bottom: 5px; font-weight: bold; }
@@ -124,11 +185,16 @@ async fn serve_homepage() -> HttpResponse {
             .prediction-table { width: 100%; border-collapse: collapse; margin: 15px 0; }
             .prediction-table th, .prediction-table td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
             .prediction-table th { background: #f8f9fa; }
+            .trends-section { background: #fff3e6; padding: 20px; border-radius: 10px; margin: 20px 0; }
+            .trend-card { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; border-left: 4px solid #007bff; }
+            .improving { border-left-color: #28a745; }
+            .declining { border-left-color: #dc3545; }
+            .stable { border-left-color: #ffc107; }
         </style>
     </head>
     <body>
         <div class="container">
-            <h1> The Technical University of Kenya Student Performance Predictor</h1>
+            <h1>🎓 The Technical University of Kenya Student Performance Predictor</h1>
             <p>Enter student details to predict academic performance based on study patterns:</p>
             
             <div class="form-group">
@@ -141,19 +207,32 @@ async fn serve_homepage() -> HttpResponse {
                 <input type="number" id="attendance" step="0.1" placeholder="e.g., 85.0" value="85.0">
             </div>
             
-            <button onclick="predict()"> Predict Academic Result</button>
+            <button onclick="predict()">📊 Predict Academic Result</button>
             
             <div id="result" class="result"></div>
 
             <div class="button-group">
-                <button onclick="showAnalytics()" style="background: #28a745;"> Performance Analytics</button>
-                <button onclick="showTips()" style="background: #6f42c1;"> Success Tips</button>
-                <button onclick="showModelInfo()" style="background: #fd7e14;"> Model Info</button>
+                <button onclick="showAnalytics()" style="background: #28a745;">📈 Performance Analytics</button>
+                <button onclick="showTips()" style="background: #6f42c1;">💡 Success Tips</button>
+                <button onclick="showModelInfo()" style="background: #fd7e14;">🤖 Model Info</button>
+                <button onclick="showTrendsDashboard()" style="background: #e83e8c;">📊 Trends Dashboard</button>
+            </div>
+
+            <!-- NEW: Trends Dashboard Section -->
+            <div class="trends-section">
+                <h3>📈 Student Performance Trends Dashboard (NEW)</h3>
+                <p>Track student progress and class performance over time:</p>
+                
+                <button onclick="loadTrendsDashboard()" style="background: #e83e8c;">🔄 Load Trends Dashboard</button>
+                <button onclick="loadClassTrends()" style="background: #20c997;">👥 Class Trends</button>
+                
+                <div id="trends-dashboard" class="result" style="display: none;"></div>
+                <div id="class-trends" class="result" style="display: none;"></div>
             </div>
 
             <!-- Batch Prediction Section -->
             <div class="feature-section">
-                <h3> Batch Student Prediction (NEW)</h3>
+                <h3>📁 Batch Student Prediction</h3>
                 <p>Upload multiple students at once for bulk predictions (CSV format):</p>
                 
                 <textarea id="batchData" placeholder="Enter CSV data:
@@ -165,28 +244,190 @@ Kirionki Williams,3.0,65.0
 David Lemoita,7.5,88.0" 
                     rows="8" style="width: 100%; padding: 10px; border-radius: 5px; border: 1px solid #ddd; font-family: monospace;"></textarea>
                 
-                <button onclick="processBatch()" style="background: #28a745; margin-top: 10px;"> Process Batch Predictions</button>
+                <button onclick="processBatch()" style="background: #28a745; margin-top: 10px;">📊 Process Batch Predictions</button>
                 
                 <div id="batch-result" class="result" style="display: none;"></div>
             </div>
 
             <div id="analytics" class="result info" style="display: none;">
-                <h3> TUK Student Performance Analytics</h3>
+                <h3>📈 TUK Student Performance Analytics</h3>
                 <div id="analytics-content"></div>
             </div>
 
             <div id="tips" class="result info" style="display: none;">
-                <h3> TUK Student Success Tips</h3>
+                <h3>💡 TUK Student Success Tips</h3>
                 <div id="tips-content"></div>
             </div>
 
             <div id="model-info" class="result info" style="display: none;">
-                <h3> Model Information</h3>
+                <h3>🤖 Model Information</h3>
                 <div id="model-info-content"></div>
             </div>
         </div>
 
         <script>
+            // NEW: Trends Dashboard Functions
+            async function loadTrendsDashboard() {
+                const dashboardDiv = document.getElementById('trends-dashboard');
+                const classDiv = document.getElementById('class-trends');
+                classDiv.style.display = 'none';
+                
+                try {
+                    const response = await fetch('/trends-dashboard');
+                    const data = await response.json();
+                    
+                    dashboardDiv.innerHTML = `
+                        <h3>📊 Performance Trends Dashboard</h3>
+                        <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                            <h4>Class Overview</h4>
+                            <p><strong>Total Students:</strong> ${data.class_trends.total_students}</p>
+                            <p><strong>Average Improvement Score:</strong> ${data.class_trends.average_improvement.toFixed(2)}</p>
+                            <p><strong>Top Performers:</strong> ${data.class_trends.top_performers.join(', ')}</p>
+                            <p><strong>Students Needing Support:</strong> ${data.class_trends.at_risk_students.join(', ')}</p>
+                        </div>
+                        
+                        <h4>Weekly Class Performance</h4>
+                        <table class="prediction-table">
+                            <thead>
+                                <tr>
+                                    <th>Week</th>
+                                    <th>Avg Study Hours</th>
+                                    <th>Avg Attendance</th>
+                                    <th>Pass Rate</th>
+                                    <th>Total Predictions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.class_trends.weekly_summary.map(week => `
+                                    <tr>
+                                        <td>${week.week}</td>
+                                        <td>${week.avg_study_hours.toFixed(1)}h</td>
+                                        <td>${week.avg_attendance.toFixed(1)}%</td>
+                                        <td>${(week.pass_rate * 100).toFixed(1)}%</td>
+                                        <td>${week.total_predictions}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                        
+                        <h4>Individual Student Trends</h4>
+                        ${data.student_trends.map(student => `
+                            <div class="trend-card ${student.overall_trend.toLowerCase()}">
+                                <h5>${student.student_name}</h5>
+                                <p><strong>Trend:</strong> ${student.overall_trend} | <strong>Improvement Score:</strong> ${student.improvement_score.toFixed(1)}/10</p>
+                                <table class="prediction-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Week</th>
+                                            <th>Study Hours</th>
+                                            <th>Attendance</th>
+                                            <th>Prediction</th>
+                                            <th>Confidence</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${student.weekly_data.map(week => `
+                                            <tr>
+                                                <td>${week.week}</td>
+                                                <td>${week.study_hours}h</td>
+                                                <td>${week.attendance}%</td>
+                                                <td style="color: ${week.predicted_pass ? '#28a745' : '#dc3545'};">
+                                                    ${week.predicted_pass ? 'Pass' : 'Fail'}
+                                                </td>
+                                                <td>${(week.confidence * 100).toFixed(1)}%</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `).join('')}
+                        
+                        <div style="margin-top: 20px; padding: 15px; background: #e9ecef; border-radius: 5px;">
+                            <small>📅 Last updated: ${new Date(data.timestamp).toLocaleString()}</small>
+                        </div>
+                    `;
+                    
+                    dashboardDiv.style.display = 'block';
+                    dashboardDiv.scrollIntoView({behavior: 'smooth'});
+                } catch (error) {
+                    dashboardDiv.style.display = 'block';
+                    dashboardDiv.className = 'result fail';
+                    dashboardDiv.innerHTML = `<p>Error loading trends dashboard: ${error.message}</p>`;
+                }
+            }
+
+            async function loadClassTrends() {
+                const classDiv = document.getElementById('class-trends');
+                const dashboardDiv = document.getElementById('trends-dashboard');
+                dashboardDiv.style.display = 'none';
+                
+                try {
+                    const response = await fetch('/class-trends');
+                    const data = await response.json();
+                    
+                    classDiv.innerHTML = `
+                        <h3>👥 Class Performance Trends</h3>
+                        <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                            <h4>Class Summary</h4>
+                            <p><strong>Total Students:</strong> ${data.total_students}</p>
+                            <p><strong>Average Improvement:</strong> ${data.average_improvement.toFixed(2)}</p>
+                        </div>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0;">
+                            <div style="background: #d4edda; padding: 15px; border-radius: 8px;">
+                                <h5>🏆 Top Performers</h5>
+                                <ul>
+                                    ${data.top_performers.map(student => `<li>${student}</li>`).join('')}
+                                </ul>
+                            </div>
+                            <div style="background: #f8d7da; padding: 15px; border-radius: 8px;">
+                                <h5>⚠️ Needs Support</h5>
+                                <ul>
+                                    ${data.at_risk_students.map(student => `<li>${student}</li>`).join('')}
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <h4>Weekly Performance Metrics</h4>
+                        <table class="prediction-table">
+                            <thead>
+                                <tr>
+                                    <th>Week</th>
+                                    <th>Avg Study Hours</th>
+                                    <th>Avg Attendance</th>
+                                    <th>Pass Rate</th>
+                                    <th>Trend</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.weekly_summary.map((week, index) => {
+                                    const trend = index > 0 ? 
+                                        (week.pass_rate > data.weekly_summary[index-1].pass_rate ? '📈' : 
+                                         week.pass_rate < data.weekly_summary[index-1].pass_rate ? '📉' : '➡️') : '➡️';
+                                    return `
+                                        <tr>
+                                            <td>${week.week}</td>
+                                            <td>${week.avg_study_hours.toFixed(1)}h</td>
+                                            <td>${week.avg_attendance.toFixed(1)}%</td>
+                                            <td>${(week.pass_rate * 100).toFixed(1)}%</td>
+                                            <td>${trend}</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    
+                    classDiv.style.display = 'block';
+                    classDiv.scrollIntoView({behavior: 'smooth'});
+                } catch (error) {
+                    classDiv.style.display = 'block';
+                    classDiv.className = 'result fail';
+                    classDiv.innerHTML = `<p>Error loading class trends: ${error.message}</p>`;
+                }
+            }
+
+            // Existing functions (keep all your existing functions: predict, processBatch, showAnalytics, showTips, showModelInfo)
             async function predict() {
                 const hours = document.getElementById('hours').value;
                 const attendance = document.getElementById('attendance').value;
@@ -251,7 +492,7 @@ David Lemoita,7.5,88.0"
                     resultDiv.style.display = 'block';
                     resultDiv.className = 'result info';
                     resultDiv.innerHTML = `
-                        <h3> Batch Prediction Results</h3>
+                        <h3>📊 Batch Prediction Results</h3>
                         <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
                             <h4>Summary</h4>
                             <p><strong>Total Students:</strong> ${data.total_students}</p>
@@ -369,74 +610,4 @@ David Lemoita,7.5,88.0"
                 const contentDiv = document.getElementById('model-info-content');
                 
                 try {
-                    const response = await fetch('/model/info');
-                    const data = await response.json();
-                    
-                    contentDiv.innerHTML = `
-                        <div style="background: white; padding: 15px; border-radius: 5px;">
-                            <p><strong>Model Accuracy:</strong> ${(data.accuracy * 100).toFixed(1)}%</p>
-                            <p><strong>Algorithm:</strong> Logistic Regression</p>
-                            <p><strong>Features:</strong> Study Hours, Attendance Percentage</p>
-                            <p><strong>Training Data:</strong> TUK Student Academic Records</p>
-                        </div>
-                    `;
-                    
-                    modelDiv.style.display = 'block';
-                    modelDiv.scrollIntoView({behavior: 'smooth'});
-                } catch (error) {
-                    contentDiv.innerHTML = `<p style="color: red;">Error loading model info: ${error.message}</p>`;
-                    modelDiv.style.display = 'block';
-                }
-            }
-        </script>
-    </body>
-    </html>
-    "#;
-
-    HttpResponse::Ok().content_type("text/html").body(html_content)
-}
-
-async fn start_api(
-    model: TrainedModel,
-    model_info: ModelInfo,
-) -> std::io::Result<()> {
-    let model_data = web::Data::new(model);
-    let info_data = web::Data::new(model_info);
-    
-    HttpServer::new(move || {
-        App::new()
-            .app_data(model_data.clone())
-            .app_data(info_data.clone())
-            .route("/", web::get().to(serve_homepage))
-            .route("/predict", web::post().to(predict))
-            .route("/batch-predict", web::post().to(batch_predict))
-            .route("/model/info", web::get().to(get_model_info))
-            .route("/health", web::get().to(health_check))
-            .route("/analytics", web::get().to(get_analytics))
-            .route("/tips", web::get().to(get_success_tips))
-    })
-    .bind(("127.0.0.1", 8080))?
-    .run()
-    .await
-}
-
-#[actix_web::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    println!("🚀 Loading TUK student data...");
-    
-    let data = load_data("data/students.csv")?;
-    println!("Loaded {} student records", data.nrows());
-
-    let (model, accuracy) = train_model(data)?;
-    println!("🎯 Model trained successfully! Accuracy: {:.2}%", accuracy * 100.0);
-
-    let model_info = ModelInfo { accuracy };
-
-    println!("🌐 Starting TUK Student Predictor API on http://127.0.0.1:8080");
-    println!("   Visit http://127.0.0.1:8080 in your browser!");
-    println!("   NEW: Batch prediction feature available!");
-    
-    start_api(model, model_info).await?;
-
-    Ok(())
-}
+                    const response = await fetch

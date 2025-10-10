@@ -180,7 +180,7 @@ impl TrendsAnalyzer {
     }
 }
 
-// Mock data generator for demo
+// Mock data generator
 pub fn generate_mock_trends_data() -> HashMap<String, Vec<(f64, f64)>> {
     let mut data = HashMap::new();
     
