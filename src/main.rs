@@ -33,68 +33,11 @@ struct WeeklyData {
     attendance: f64,
 }
 
-//Student progress tracking endpoint
+// NEW: Student progress tracking request
 #[derive(Deserialize)]
-struct ProgressReuest{
+struct ProgressRequest {
     student_name: String,
-    weeeks: usize,
-}
-
-async fn track_student_progress(
-    web::Json(req): web::Json<ProgressReuest>,
-    model: web::Data<TrainedModel>,
-)->HttpResponse {
-    let mut progress_data = Vec::new();
-    let mut rng = rand::thread_rng();
-
-    //Generate simulated progress data
-    for week in 1..=re.weeks {
-        //Simulate gradual improvement
-        let base_hours = 4.0 + (week as f64 * 0.5);
-        let base_attendance = 70.0 + (week as f64 * 2.0);
-
-        //Add some randomness
-        let hours = (base_hours + rng.gen_range(-1.0..1.0)).max(0.0);
-        let attendance = (base_attendance + rng.gen_range(-5.0..5.0)).clamp(0.0,100.0);
-
-        let features = vec![hours, attendance];
-        let (prediction, confidence) = model.prediction(&features);
-
-        progress_data.push(serde_json::json!({
-            "week": week,
-            "study_hours": hours,
-            "attendance": attendance,
-            "prediction": if prediction {"Pass"} else {"Fail"}, 
-            "confidence": confidence,
-            "improvement_score": (hours * 0.6 + attendance * 0.4) / 100.0 * 10.0
-        }));
-         
-    }
-
-    let response = serde_json!::({
-        "student_name": req.student_name,
-        "tracking_weeks": req.weeks,
-        "progress_data": progress_data,
-        "overall_trend":analyze_progress_trend(&progress_data),
-        "generated_at": chrono::Utc::now().to_rfc3339()
-    });
-    HttpResponse::Ok().json(response)
-}
-
-fn analyze_progress_trend(progress_data: &[serde_json::Value]) ->String{
-    if progress_data.len()<2{
-        return "Insufficient data".to_string();
-    }
-    let first_score = progress_data[0]["improvement_score"].as_f64().unwrap_or(0.0);
-    let last_score = progress_data.last().unwrap()["improvement_score"].as_f64().unwrap_or(0.0);
-
-    if last_score > first_score + 1.0 {
-        "Improving".to_string()
-    } else if last_score > first_score - 1.0{
-        "Declining".to_string()
-    } else {
-        "Stable".to_string()
-    }
+    weeks: usize,
 }
 
 // Student trends endpoint
@@ -140,6 +83,65 @@ async fn get_trends_dashboard() -> HttpResponse {
     });
 
     HttpResponse::Ok().json(dashboard_data)
+}
+
+// NEW: Student progress tracking endpoint
+async fn track_student_progress(
+    web::Json(req): web::Json<ProgressRequest>,
+    model: web::Data<TrainedModel>,
+) -> HttpResponse {
+    let mut progress_data = Vec::new();
+    let mut rng = rand::thread_rng();
+    
+    // Generate simulated progress data
+    for week in 1..=req.weeks {
+        // Simulate gradual improvement
+        let base_hours = 4.0 + (week as f64 * 0.5);
+        let base_attendance = 70.0 + (week as f64 * 2.0);
+        
+        // Add some randomness
+        let hours = (base_hours + rng.gen_range(-1.0..1.0)).max(0.0);
+        let attendance = (base_attendance + rng.gen_range(-5.0..5.0)).clamp(0.0, 100.0);
+        
+        let features = vec![hours, attendance];
+        let (prediction, confidence) = model.predict(&features);
+        
+        progress_data.push(serde_json::json!({
+            "week": week,
+            "study_hours": hours,
+            "attendance": attendance,
+            "prediction": if prediction { "Pass" } else { "Fail" },
+            "confidence": confidence,
+            "improvement_score": (hours * 0.6 + attendance * 0.4) / 100.0 * 10.0
+        }));
+    }
+    
+    let response = serde_json::json!({
+        "student_name": req.student_name,
+        "tracking_weeks": req.weeks,
+        "progress_data": progress_data,
+        "overall_trend": analyze_progress_trend(&progress_data),
+        "generated_at": chrono::Utc::now().to_rfc3339()
+    });
+    
+    HttpResponse::Ok().json(response)
+}
+
+fn analyze_progress_trend(progress_data: &[serde_json::Value]) -> String {
+    if progress_data.len() < 2 {
+        return "Insufficient data".to_string();
+    }
+    
+    let first_score = progress_data[0]["improvement_score"].as_f64().unwrap_or(0.0);
+    let last_score = progress_data.last().unwrap()["improvement_score"].as_f64().unwrap_or(0.0);
+    
+    if last_score > first_score + 1.0 {
+        "Improving".to_string()
+    } else if last_score < first_score - 1.0 {
+        "Declining".to_string()
+    } else {
+        "Stable".to_string()
+    }
 }
 
 // Prediction endpoint with database
@@ -295,7 +297,7 @@ async fn get_real_trends_dashboard(db: web::Data<Database>) -> HttpResponse {
                 "total_records": weekly_trends.len(),
             });
 
-                        HttpResponse::Ok().json(dashboard_data)
+            HttpResponse::Ok().json(dashboard_data)
         },
         Err(e) => {
             HttpResponse::InternalServerError().json(serde_json::json!({
@@ -547,6 +549,14 @@ async fn serve_homepage() -> HttpResponse {
             border: 2px solid #007bff;
         }
 
+        .progress-section {
+            background: #f0e6ff;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 25px 0;
+            border: 2px solid #6f42c1;
+        }
+
         .prediction-table {
             width: 100%;
             border-collapse: collapse;
@@ -710,6 +720,30 @@ async fn serve_homepage() -> HttpResponse {
             <button onclick="showModelInfo()" style="background: #fd7e14;">🤖 Model Info</button>
             <button onclick="loadTrendsDashboard()" style="background: #e83e8c;">📊 Interactive Dashboard</button>
             <button onclick="showAllPredictions()" style="background: #6f42c1;">🗃️ View All Predictions</button>
+        </div>
+
+        <!-- NEW: Student Progress Tracking Section -->
+        <div class="progress-section">
+            <h3 style="color: #6f42c1; margin-top: 0;">📈 Student Progress Tracking</h3>
+            <p>Track student improvement over multiple weeks:</p>
+            
+            <div class="form-group">
+                <label for="studentName">👨‍🎓 Student Name:</label>
+                <input type="text" id="studentName" placeholder="e.g., John Doe" value="Denis Lemayian">
+            </div>
+            
+            <div class="form-group">
+                <label for="trackingWeeks">📅 Weeks to Track:</label>
+                <input type="number" id="trackingWeeks" placeholder="e.g., 8" value="8" min="1" max="52">
+            </div>
+            
+            <div style="text-align: center;">
+                <button onclick="trackProgress()" style="background: linear-gradient(135deg, #6f42c1, #e83e8c);">
+                    📊 Generate Progress Report
+                </button>
+            </div>
+            
+            <div id="progress-result" class="result" style="display: none;"></div>
         </div>
 
         <!-- Database Analytics Section -->
@@ -925,59 +959,7 @@ David Lemoita,7.5,88.0" rows="8"></textarea>
             }
         }
 
-        <!--Student Progress Tracking Section -->
-        <div class ="feature-section" style = "backround: #f0e6ff; border-color: #6f42c1">
-            <h3 style "color: #6f42c1; margin-top;">📈 Student Progress Tracking</h3>
-                <p> Track student iprovement over multiple weeks: </p>
-
-                <div class = "form-group">
-                    <label for "studentName"> 👨‍🎓 Student Name:</label>
-                    <input type = "text" id = "studentName" placeholder = "e.g., John Dev" value = "Denis Lemayian">
-                </div>
-                <div class="form-group">
-                <label for="trackingWeeks">📅 Weeks to Track:</label>
-                <input type="number" id="trackingWeeks" placeholder="e.g., 8" value="8" min="1" max="52">
-            </div>
-            
-            <div style="text-align: center;">
-                <button onclick="trackProgress()" style="background: linear-gradient(135deg, #6f42c1, #e83e8c);">
-                    📊 Generate Progress Report
-                </button>
-            </div>
-            
-            <div id="progress-result" class="result" style="display: none;"></div>
-        </div>
-
-
-
-        // Other JavaScript functions would go here...
-        // (showAnalytics, showDatabaseAnalytics, showTips, showModelInfo, loadTrendsDashboard, etc.)
-
-        // Placeholder functions for other features
-        async function showAnalytics() {
-            alert('Analytics feature would be implemented here');
-        }
-
-        async function showDatabaseAnalytics() {
-            alert('Database Analytics feature would be implemented here');
-        }
-
-        async function showTips() {
-            alert('Success Tips feature would be implemented here');
-        }
-
-        async function showModelInfo() {
-            alert('Model Info feature would be implemented here');
-        }
-
-        async function loadTrendsDashboard() {
-            alert('Trends Dashboard feature would be implemented here');
-        }
-
-        async function showAllPredictions() {
-            alert('View All Predictions feature would be implemented here');
-        }
-                    // Student progress tracking function
+        // NEW: Student progress tracking function
         async function trackProgress() {
             const studentName = document.getElementById('studentName').value;
             const trackingWeeks = document.getElementById('trackingWeeks').value;
@@ -1069,7 +1051,30 @@ David Lemoita,7.5,88.0" rows="8"></textarea>
             }
         }
 
+        // Placeholder functions for other features
+        async function showAnalytics() {
+            alert('Analytics feature would be implemented here');
+        }
 
+        async function showDatabaseAnalytics() {
+            alert('Database Analytics feature would be implemented here');
+        }
+
+        async function showTips() {
+            alert('Success Tips feature would be implemented here');
+        }
+
+        async function showModelInfo() {
+            alert('Model Info feature would be implemented here');
+        }
+
+        async function loadTrendsDashboard() {
+            alert('Trends Dashboard feature would be implemented here');
+        }
+
+        async function showAllPredictions() {
+            alert('View All Predictions feature would be implemented here');
+        }
 
     </script>
 </body>
@@ -1107,6 +1112,7 @@ async fn start_api(
             .route("/student-trends", web::post().to(get_student_trends))
             .route("/class-trends", web::get().to(get_class_trends))
             .route("/trends-dashboard", web::get().to(get_trends_dashboard))
+            .route("/track-progress", web::post().to(track_student_progress))
     })
     .bind(("127.0.0.1", 8080))?
     .run()
@@ -1149,7 +1155,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("   Features: Real Database Analytics & Rule-based Predictions");
     
     start_api(model, model_info, db).await?;
-    .route("/track-progress", web::post().to(track_student_progress))
 
     Ok(())
 }
