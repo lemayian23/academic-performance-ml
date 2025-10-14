@@ -7,7 +7,7 @@ pub struct StudentTrend {
     pub weekly_data: Vec<WeekData>,
     pub overall_trend: String,
     pub improvement_score: f64,
-    pub chart_data: ChartData,  // NEW: Chart-specific data
+    pub chart_data: ChartData, 
 }
 
 #[derive(Serialize, Clone)]
@@ -26,7 +26,7 @@ pub struct ClassTrends {
     pub top_performers: Vec<String>,
     pub at_risk_students: Vec<String>,
     pub average_improvement: f64,
-    pub chart_data: ClassChartData,  // NEW: Chart-specific data
+    pub chart_data: ClassChartData, 
 }
 
 #[derive(Serialize, Clone)]
