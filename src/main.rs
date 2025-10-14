@@ -1609,7 +1609,7 @@ David Lemoita,7.5,88.0" rows="8"></textarea>
 async fn main() -> std::io::Result<()> {
     // Initialize the ML model
     let model_info = train_model();
-    let trained_model = TrainedModel::new(); // Fixed: removed the argument
+    let trained_model = TrainedModel::new();
     
     // Initialize database
     let database = Database::new().await

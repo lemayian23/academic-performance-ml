@@ -1,8 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::error::Error;
 use rand::Rng;
-
-pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StudentRecord {
@@ -45,6 +42,10 @@ pub struct BatchSummary {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelInfo {
     pub accuracy: f64,
+    pub features: Vec<String>,
+    pub training_data_size: usize,
+    pub model_type: String,
+    pub last_updated: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -308,7 +309,7 @@ impl TrainedModel {
         schedule
     }
 
-    fn generate_daily_blocks(&self, day: &str, preferred_times: &[String], daily_hours: f64) -> Vec<StudyBlock> {
+    fn generate_daily_blocks(&self, _day: &str, preferred_times: &[String], daily_hours: f64) -> Vec<StudyBlock> {
         let mut blocks = Vec::new();
         let mut remaining_hours = daily_hours;
 
@@ -397,8 +398,16 @@ impl TrainedModel {
     }
 }
 
-pub fn train_model() -> Result<(TrainedModel, f64)> {
+// FIXED: This function now returns ModelInfo directly instead of Result
+pub fn train_model() -> ModelInfo {
     let model = TrainedModel::new();
     let accuracy = model.get_accuracy();
-    Ok((model, accuracy))
+    
+    ModelInfo {
+        accuracy,
+        features: vec!["study_hours".to_string(), "attendance".to_string()],
+        training_data_size: 1000,
+        model_type: "Logistic Regression".to_string(),
+        last_updated: chrono::Utc::now().to_rfc3339(),
+    }
 }
