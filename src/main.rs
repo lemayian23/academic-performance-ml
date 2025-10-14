@@ -5,11 +5,10 @@ mod database;
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::Deserialize;
-use std::error::Error;
 use rand::Rng;
 
 use crate::model::{train_model, ModelInfo, PredictResponse, AnalyticsData, PerformanceCategory, 
-                   StudentRecord as ModelStudentRecord, TrainedModel};
+                   StudentRecord as ModelStudentRecord, TrainedModel, StudyPlanRequest};
 use crate::analytics::{TrendsAnalyzer, generate_mock_trends_data};
 use crate::database::{Database, StudentRecord as DbStudentRecord, ModelVersion};
 
@@ -33,7 +32,7 @@ struct WeeklyData {
     attendance: f64,
 }
 
-// NEW: Student progress tracking request
+// Student progress tracking request
 #[derive(Deserialize)]
 struct ProgressRequest {
     student_name: String,
@@ -85,7 +84,7 @@ async fn get_trends_dashboard() -> HttpResponse {
     HttpResponse::Ok().json(dashboard_data)
 }
 
-// NEW: Student progress tracking endpoint
+// Student progress tracking endpoint
 async fn track_student_progress(
     web::Json(req): web::Json<ProgressRequest>,
     model: web::Data<TrainedModel>,
@@ -142,6 +141,15 @@ fn analyze_progress_trend(progress_data: &[serde_json::Value]) -> String {
     } else {
         "Stable".to_string()
     }
+}
+
+// NEW: Study Plan Generator endpoint
+async fn generate_study_plan(
+    web::Json(req): web::Json<StudyPlanRequest>,
+    model: web::Data<TrainedModel>,
+) -> HttpResponse {
+    let study_plan = model.generate_study_plan(&req);
+    HttpResponse::Ok().json(study_plan)
 }
 
 // Prediction endpoint with database
@@ -370,7 +378,7 @@ async fn get_success_tips() -> HttpResponse {
     HttpResponse::Ok().json(tips)
 }
 
-// Homepage endpoint with complete HTML
+// Homepage endpoint with complete HTML including Study Plan Generator
 async fn serve_homepage() -> HttpResponse {
     let html_content = r#"<!DOCTYPE html>
 <html lang="en">
@@ -442,7 +450,7 @@ async fn serve_homepage() -> HttpResponse {
             font-size: 1.1em;
         }
 
-        input {
+        input, select {
             width: 100%;
             padding: 15px;
             border: 2px solid #e9ecef;
@@ -452,7 +460,7 @@ async fn serve_homepage() -> HttpResponse {
             background: white;
         }
 
-        input:focus {
+        input:focus, select:focus {
             border-color: #007bff;
             outline: none;
             box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
@@ -516,6 +524,12 @@ async fn serve_homepage() -> HttpResponse {
             border-left-color: #ffc107; 
         }
 
+        .success { 
+            background: #e8f5e8; 
+            color: #155724; 
+            border-left-color: #28a745; 
+        }
+
         .button-group {
             text-align: center;
             margin: 30px 0;
@@ -555,6 +569,14 @@ async fn serve_homepage() -> HttpResponse {
             border-radius: 12px;
             margin: 25px 0;
             border: 2px solid #6f42c1;
+        }
+
+        .study-plan-section {
+            background: #fff0f6;
+            padding: 25px;
+            border-radius: 12px;
+            margin: 25px 0;
+            border: 2px solid #e83e8c;
         }
 
         .prediction-table {
@@ -685,6 +707,44 @@ async fn serve_homepage() -> HttpResponse {
             outline: none;
             box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
         }
+
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 10px 0;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .schedule-day {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #007bff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .study-block {
+            background: #f8f9fa;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 3px solid #28a745;
+        }
+
+        .recommendation-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 8px;
+            border-left: 3px solid #ffc107;
+        }
     </style>
 </head>
 <body>
@@ -722,7 +782,98 @@ async fn serve_homepage() -> HttpResponse {
             <button onclick="showAllPredictions()" style="background: #6f42c1;">🗃️ View All Predictions</button>
         </div>
 
-        <!-- NEW: Student Progress Tracking Section -->
+        <!-- NEW: Study Plan Generator Section -->
+        <div class="study-plan-section">
+            <h3 style="color: #e83e8c; margin-top: 0;">📚 Personalized Study Plan Generator</h3>
+            <p>Create a customized study schedule based on your academic goals:</p>
+            
+            <div class="form-group">
+                <label for="planStudentName">👨‍🎓 Student Name:</label>
+                <input type="text" id="planStudentName" placeholder="e.g., John Doe" value="Denis Lemayian">
+            </div>
+            
+            <div class="form-group">
+                <label for="currentHours">📚 Current Weekly Study Hours:</label>
+                <input type="number" id="currentHours" step="0.1" placeholder="e.g., 6.0" value="6.0" min="0" max="168">
+            </div>
+            
+            <div class="form-group">
+                <label for="currentAttendance">🏫 Current Attendance (%):</label>
+                <input type="number" id="currentAttendance" step="0.1" placeholder="e.g., 75.0" value="75.0" min="0" max="100">
+            </div>
+            
+            <div class="form-group">
+                <label for="targetGrade">🎯 Target Grade:</label>
+                <select id="targetGrade">
+                    <option value="A">A - Excellent (90-100%)</option>
+                    <option value="B">B - Good (75-89%)</option>
+                    <option value="C" selected>C - Average (60-74%)</option>
+                    <option value="Pass">Pass (50-59%)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>📅 Available Study Days:</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="monday" checked>
+                        <label for="monday">Monday</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="tuesday" checked>
+                        <label for="tuesday">Tuesday</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="wednesday" checked>
+                        <label for="wednesday">Wednesday</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="thursday" checked>
+                        <label for="thursday">Thursday</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="friday" checked>
+                        <label for="friday">Friday</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="saturday">
+                        <label for="saturday">Saturday</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="sunday">
+                        <label for="sunday">Sunday</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>⏰ Preferred Study Times:</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="morning" checked>
+                        <label for="morning">Morning (8-11 AM)</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="afternoon" checked>
+                        <label for="afternoon">Afternoon (2-5 PM)</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="evening" checked>
+                        <label for="evening">Evening (7-10 PM)</label>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="text-align: center;">
+                <button onclick="generateStudyPlan()" style="background: linear-gradient(135deg, #e83e8c, #6f42c1); font-size: 18px; padding: 18px 36px;">
+                    🎓 Generate Study Plan
+                </button>
+            </div>
+            
+            <div id="study-plan-result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Student Progress Tracking Section -->
         <div class="progress-section">
             <h3 style="color: #6f42c1; margin-top: 0;">📈 Student Progress Tracking</h3>
             <p>Track student improvement over multiple weeks:</p>
@@ -830,331 +981,672 @@ David Lemoita,7.5,88.0" rows="8"></textarea>
                 button.classList.remove('active');
             });
             
-            // Show selected tab and activate button
+            // Show selected tab and activate its button
             document.getElementById(tabName).style.display = 'block';
             event.target.classList.add('active');
+            
+            // Load data for real dashboard if needed
+            if (tabName === 'real-dashboard') {
+                loadRealTrendsDashboard();
+            }
         }
-
-        // Show initial tab
-        switchTab('mock-dashboard');
-
-        // Prediction function
+        
         async function predict() {
-            const hours = document.getElementById('hours').value;
-            const attendance = document.getElementById('attendance').value;
+            const hours = parseFloat(document.getElementById('hours').value);
+            const attendance = parseFloat(document.getElementById('attendance').value);
+            
+            const response = await fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hours, attendance })
+            });
+            
+            const result = await response.json();
             const resultDiv = document.getElementById('result');
             
-            if (!hours || !attendance) {
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'result warning';
-                resultDiv.innerHTML = '<p>⚠️ Please enter both study hours and attendance</p>';
-                return;
+            if (result.prediction === 'Pass') {
+                resultDiv.className = 'result pass';
+                resultDiv.innerHTML = `
+                    <h3>🎉 Prediction Result: PASS</h3>
+                    <p><strong>Confidence:</strong> ${(result.confidence * 100).toFixed(1)}%</p>
+                    <p><strong>Study Hours:</strong> ${hours} hours/week</p>
+                    <p><strong>Attendance:</strong> ${attendance}%</p>
+                    <p>✅ Great job! Your current study habits and attendance should lead to success.</p>
+                `;
+            } else {
+                resultDiv.className = 'result fail';
+                resultDiv.innerHTML = `
+                    <h3>⚠️ Prediction Result: NEEDS IMPROVEMENT</h3>
+                    <p><strong>Confidence:</strong> ${(result.confidence * 100).toFixed(1)}%</p>
+                    <p><strong>Study Hours:</strong> ${hours} hours/week</p>
+                    <p><strong>Attendance:</strong> ${attendance}%</p>
+                    <p>💡 Consider increasing study hours and improving attendance for better results.</p>
+                `;
             }
             
-            try {
-                const response = await fetch('/predict', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({hours: parseFloat(hours), attendance: parseFloat(attendance)})
-                });
-                
-                const data = await response.json();
-                
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'result ' + (data.prediction === 'Pass' ? 'pass' : 'fail');
-                resultDiv.innerHTML = `
-                    <h3>🎓 Prediction Result: ${data.prediction}</h3>
-                    <p><strong>Confidence Level:</strong> ${(data.confidence * 100).toFixed(1)}%</p>
-                    <p>Student with <strong>${hours} study hours</strong> and <strong>${attendance}% attendance</strong> is predicted to: <strong>${data.prediction}</strong></p>
-                    <p style="margin-top: 15px; font-size: 0.9em; opacity: 0.8;">✅ This prediction has been saved to the database</p>
-                `;
-            } catch (error) {
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'result fail';
-                resultDiv.innerHTML = `<p>❌ Error: ${error.message}</p>`;
-            }
+            resultDiv.style.display = 'block';
         }
-
-        // Batch prediction function
+        
+        async function showAnalytics() {
+            const response = await fetch('/analytics');
+            const analytics = await response.json();
+            
+            const content = document.getElementById('analytics-content');
+            content.innerHTML = `
+                <div class="chart-grid">
+                    <div class="metric-card">
+                        <h4>Total Students</h4>
+                        <div class="metric-value">${analytics.total_students}</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Pass Rate</h4>
+                        <div class="metric-value">${(analytics.pass_rate * 100).toFixed(1)}%</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Avg Study Hours</h4>
+                        <div class="metric-value">${analytics.avg_study_hours}</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Avg Attendance</h4>
+                        <div class="metric-value">${analytics.avg_attendance}%</div>
+                    </div>
+                </div>
+                
+                <h4>Performance Breakdown</h4>
+                <table class="prediction-table">
+                    <thead>
+                        <tr>
+                            <th>Performance Range</th>
+                            <th>Students</th>
+                            <th>Pass Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${analytics.performance_breakdown.map(cat => `
+                            <tr>
+                                <td>${cat.range}</td>
+                                <td>${cat.count}</td>
+                                <td>${(cat.pass_rate * 100).toFixed(1)}%</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            document.getElementById('analytics').style.display = 'block';
+        }
+        
+        async function showDatabaseAnalytics() {
+            const response = await fetch('/database-analytics');
+            const analytics = await response.json();
+            
+            const content = document.getElementById('database-analytics');
+            content.className = 'result info';
+            content.innerHTML = `
+                <h3>💾 Real Database Analytics</h3>
+                <div class="chart-grid">
+                    <div class="metric-card">
+                        <h4>Total Predictions</h4>
+                        <div class="metric-value">${analytics.total_students}</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Pass Rate</h4>
+                        <div class="metric-value">${(analytics.pass_rate * 100).toFixed(1)}%</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Avg Study Hours</h4>
+                        <div class="metric-value">${analytics.avg_study_hours.toFixed(1)}</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Avg Attendance</h4>
+                        <div class="metric-value">${analytics.avg_attendance.toFixed(1)}%</div>
+                    </div>
+                </div>
+                <p><em>Based on ${analytics.total_students} predictions stored in the database</em></p>
+            `;
+            
+            content.style.display = 'block';
+        }
+        
+        async function showTips() {
+            const response = await fetch('/success-tips');
+            const tips = await response.json();
+            
+            const content = document.getElementById('tips-content');
+            content.innerHTML = `
+                <ul style="list-style-type: none; padding: 0;">
+                    ${tips.map(tip => `<li style="padding: 10px; margin: 10px 0; background: white; border-radius: 8px; border-left: 4px solid #17a2b8;">${tip}</li>`).join('')}
+                </ul>
+            `;
+            
+            document.getElementById('tips').style.display = 'block';
+        }
+        
+        async function showModelInfo() {
+            const response = await fetch('/model-info');
+            const modelInfo = await response.json();
+            
+            const content = document.getElementById('model-info-content');
+            content.innerHTML = `
+                <div class="metric-card">
+                    <h4>Model Accuracy</h4>
+                    <div class="metric-value">${(modelInfo.accuracy * 100).toFixed(1)}%</div>
+                </div>
+                <p><strong>Features Used:</strong> ${modelInfo.features.join(', ')}</p>
+                <p><strong>Training Data Size:</strong> ${modelInfo.training_data_size} samples</p>
+                <p><strong>Model Type:</strong> ${modelInfo.model_type}</p>
+                <p><strong>Last Updated:</strong> ${new Date(modelInfo.last_updated).toLocaleDateString()}</p>
+            `;
+            
+            document.getElementById('model-info').style.display = 'block';
+        }
+        
         async function processBatch() {
             const batchData = document.getElementById('batchData').value;
+            const lines = batchData.trim().split('\n');
+            const headers = lines[0].split(',').map(h => h.trim());
+            const students = [];
+            
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',').map(v => v.trim());
+                if (values.length === headers.length) {
+                    const student = {};
+                    headers.forEach((header, index) => {
+                        if (header === 'hours' || header === 'attendance') {
+                            student[header] = parseFloat(values[index]);
+                        } else {
+                            student[header] = values[index];
+                        }
+                    });
+                    students.push(student);
+                }
+            }
+            
+            const response = await fetch('/batch-predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(students)
+            });
+            
+            const result = await response.json();
             const resultDiv = document.getElementById('batch-result');
             
-            try {
-                const lines = batchData.trim().split('\n');
-                const students = [];
+            let tableHtml = `
+                <h3>📊 Batch Prediction Results</h3>
+                <p><strong>Total Processed:</strong> ${result.predictions.length} students</p>
+                <table class="prediction-table">
+                    <thead>
+                        <tr>
+                            <th>Student Name</th>
+                            <th>Study Hours</th>
+                            <th>Attendance</th>
+                            <th>Prediction</th>
+                            <th>Confidence</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            result.predictions.forEach(student => {
+                tableHtml += `
+                    <tr>
+                        <td>${student.name}</td>
+                        <td>${student.hours}</td>
+                        <td>${student.attendance}%</td>
+                        <td>${student.prediction}</td>
+                        <td>${(student.confidence * 100).toFixed(1)}%</td>
+                    </tr>
+                `;
+            });
+            
+            tableHtml += '</tbody></table>';
+            resultDiv.innerHTML = tableHtml;
+            resultDiv.className = 'result success';
+            resultDiv.style.display = 'block';
+        }
+        
+        async function loadTrendsDashboard() {
+            const response = await fetch('/trends-dashboard');
+            const dashboard = await response.json();
+            
+            const resultDiv = document.getElementById('trends-dashboard');
+            resultDiv.innerHTML = `
+                <h3>📈 Interactive Trends Dashboard</h3>
+                <p><strong>Generated:</strong> ${new Date(dashboard.timestamp).toLocaleString()}</p>
                 
-                for (let i = 1; i < lines.length; i++) {
-                    if (lines[i].trim()) {
-                        const values = lines[i].split(',').map(v => v.trim());
-                        if (values.length >= 3) {
-                            students.push({
-                                name: values[0],
-                                hours: parseFloat(values[1]),
-                                attendance: parseFloat(values[2])
-                            });
+                <div class="chart-container">
+                    <canvas id="classTrendsChart"></canvas>
+                </div>
+                
+                <h4>Student Trends</h4>
+                ${dashboard.student_trends.map(trend => `
+                    <div class="trend-card ${trend.trend.toLowerCase()}">
+                        <h5>${trend.student_name}</h5>
+                        <p><strong>Trend:</strong> ${trend.trend}</p>
+                        <p><strong>Current Performance:</strong> ${trend.current_performance}</p>
+                        <p><strong>Recommendation:</strong> ${trend.recommendation}</p>
+                    </div>
+                `).join('')}
+            `;
+            
+            resultDiv.className = 'result info';
+            resultDiv.style.display = 'block';
+            
+            // Initialize chart
+            const ctx = document.getElementById('classTrendsChart').getContext('2d');
+            if (charts.classTrends) {
+                charts.classTrends.destroy();
+            }
+            
+            charts.classTrends = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dashboard.class_trends.weeks,
+                    datasets: [
+                        {
+                            label: 'Study Hours',
+                            data: dashboard.class_trends.avg_study_hours,
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0,123,255,0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Attendance %',
+                            data: dashboard.class_trends.avg_attendance,
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40,167,69,0.1)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Class Performance Trends Over Time'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
                         }
                     }
                 }
-                
-                if (students.length === 0) {
-                    throw new Error('No valid student data found. Please check CSV format.');
-                }
-                
-                const response = await fetch('/batch-predict', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(students)
-                });
-                
-                const data = await response.json();
-                
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'result info';
-                resultDiv.innerHTML = `
-                    <h3>📊 Batch Prediction Results</h3>
-                    <div style="background: white; padding: 15px; border-radius: 5px; margin: 15px 0;">
-                        <h4>Summary</h4>
-                        <p><strong>Total Students:</strong> ${data.total_students}</p>
-                        <p><strong>Pass Rate:</strong> ${(data.summary.pass_rate * 100).toFixed(1)}%</p>
-                        <p><strong>Pass Count:</strong> ${data.summary.pass_count} | <strong>Fail Count:</strong> ${data.summary.fail_count}</p>
-                        <p><strong>Average Confidence:</strong> ${(data.summary.avg_confidence * 100).toFixed(1)}%</p>
-                        <p><small>✅ All predictions have been saved to the database</small></p>
-                    </div>
-                    
-                    <h4>Individual Predictions</h4>
-                    <table class="prediction-table">
-                        <thead>
-                            <tr>
-                                <th>Student</th>
-                                <th>Hours</th>
-                                <th>Attendance</th>
-                                <th>Prediction</th>
-                                <th>Confidence</th>
-                                <th>Recommendation</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.predictions.map(pred => `
-                                <tr>
-                                    <td>${pred.name}</td>
-                                    <td>${pred.hours}</td>
-                                    <td>${pred.attendance}%</td>
-                                    <td style="color: ${pred.prediction === 'Pass' ? '#28a745' : '#dc3545'}; font-weight: bold;">
-                                        ${pred.prediction}
-                                    </td>
-                                    <td>${(pred.confidence * 100).toFixed(1)}%</td>
-                                    <td>${pred.recommendation}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                `;
-                
-                resultDiv.scrollIntoView({behavior: 'smooth'});
-            } catch (error) {
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'result fail';
-                resultDiv.innerHTML = `<p>❌ Error processing batch: ${error.message}</p>`;
-            }
+            });
         }
-
-        // NEW: Student progress tracking function
+        
+        async function loadRealTrendsDashboard() {
+            const response = await fetch('/real-trends-dashboard');
+            const dashboard = await response.json();
+            
+            const resultDiv = document.getElementById('real-trends-dashboard');
+            resultDiv.innerHTML = `
+                <h3>📈 Real Database Trends Dashboard</h3>
+                <p><strong>Data Source:</strong> ${dashboard.data_source}</p>
+                <p><strong>Total Records:</strong> ${dashboard.total_records}</p>
+                <p><strong>Generated:</strong> ${new Date(dashboard.timestamp).toLocaleString()}</p>
+                
+                <div class="chart-container">
+                    <canvas id="realTrendsChart"></canvas>
+                </div>
+                
+                <h4>Weekly Trends from Database</h4>
+                <table class="prediction-table">
+                    <thead>
+                        <tr>
+                            <th>Week</th>
+                            <th>Avg Study Hours</th>
+                            <th>Avg Attendance</th>
+                            <th>Pass Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${dashboard.weekly_trends.map(trend => `
+                            <tr>
+                                <td>${trend.week}</td>
+                                <td>${trend.avg_study_hours.toFixed(1)}</td>
+                                <td>${trend.avg_attendance.toFixed(1)}%</td>
+                                <td>${(trend.pass_rate * 100).toFixed(1)}%</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+            
+            resultDiv.className = 'result info';
+            resultDiv.style.display = 'block';
+            
+            // Initialize real trends chart
+            const ctx = document.getElementById('realTrendsChart').getContext('2d');
+            if (charts.realTrends) {
+                charts.realTrends.destroy();
+            }
+            
+            charts.realTrends = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dashboard.weekly_trends.map(t => `Week ${t.week}`),
+                    datasets: [
+                        {
+                            label: 'Study Hours',
+                            data: dashboard.weekly_trends.map(t => t.avg_study_hours),
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0,123,255,0.1)',
+                            tension: 0.4
+                        },
+                        {
+                            label: 'Attendance %',
+                            data: dashboard.weekly_trends.map(t => t.avg_attendance),
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40,167,69,0.1)',
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Real Database Performance Trends'
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        async function showAllPredictions() {
+            const response = await fetch('/all-predictions');
+            const predictions = await response.json();
+            
+            const content = document.getElementById('all-predictions');
+            content.className = 'result info';
+            
+            let tableHtml = `
+                <h3>🗃️ All Predictions from Database</h3>
+                <p><strong>Total Records:</strong> ${predictions.length}</p>
+                <table class="prediction-table">
+                    <thead>
+                        <tr>
+                            <th>Student Name</th>
+                            <th>Study Hours</th>
+                            <th>Attendance</th>
+                            <th>Prediction</th>
+                            <th>Confidence</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            predictions.forEach(pred => {
+                tableHtml += `
+                    <tr>
+                        <td>${pred.name}</td>
+                        <td>${pred.study_hours}</td>
+                        <td>${pred.attendance}%</td>
+                        <td>${pred.predicted_pass ? 'Pass' : 'Fail'}</td>
+                        <td>${(pred.confidence * 100).toFixed(1)}%</td>
+                        <td>${new Date(pred.created_at).toLocaleDateString()}</td>
+                    </tr>
+                `;
+            });
+            
+            tableHtml += '</tbody></table>';
+            content.innerHTML = tableHtml;
+            content.style.display = 'block';
+        }
+        
         async function trackProgress() {
             const studentName = document.getElementById('studentName').value;
-            const trackingWeeks = document.getElementById('trackingWeeks').value;
+            const weeks = parseInt(document.getElementById('trackingWeeks').value);
+            
+            const response = await fetch('/track-progress', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ student_name: studentName, weeks })
+            });
+            
+            const progress = await response.json();
             const resultDiv = document.getElementById('progress-result');
             
-            if (!studentName || !trackingWeeks) {
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'result warning';
-                resultDiv.innerHTML = '<p>⚠️ Please enter student name and weeks to track</p>';
-                return;
+            let progressHtml = `
+                <h3>📈 Progress Tracking: ${progress.student_name}</h3>
+                <p><strong>Tracking Period:</strong> ${progress.tracking_weeks} weeks</p>
+                <p><strong>Overall Trend:</strong> <span class="${progress.overall_trend.toLowerCase()}">${progress.overall_trend}</span></p>
+                <p><strong>Generated:</strong> ${new Date(progress.generated_at).toLocaleString()}</p>
+                
+                <div class="chart-container">
+                    <canvas id="progressChart"></canvas>
+                </div>
+                
+                <h4>Weekly Progress Data</h4>
+                <table class="prediction-table">
+                    <thead>
+                        <tr>
+                            <th>Week</th>
+                            <th>Study Hours</th>
+                            <th>Attendance</th>
+                            <th>Prediction</th>
+                            <th>Confidence</th>
+                            <th>Improvement Score</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            progress.progress_data.forEach(week => {
+                progressHtml += `
+                    <tr>
+                        <td>${week.week}</td>
+                        <td>${week.study_hours.toFixed(1)}</td>
+                        <td>${week.attendance.toFixed(1)}%</td>
+                        <td>${week.prediction}</td>
+                        <td>${(week.confidence * 100).toFixed(1)}%</td>
+                        <td>${week.improvement_score.toFixed(1)}/10</td>
+                    </tr>
+                `;
+            });
+            
+            progressHtml += '</tbody></table>';
+            resultDiv.innerHTML = progressHtml;
+            resultDiv.className = 'result info';
+            resultDiv.style.display = 'block';
+            
+            // Initialize progress chart
+            const ctx = document.getElementById('progressChart').getContext('2d');
+            if (charts.progressChart) {
+                charts.progressChart.destroy();
             }
             
-            try {
-                const response = await fetch('/track-progress', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        student_name: studentName,
-                        weeks: parseInt(trackingWeeks)
-                    })
-                });
+            charts.progressChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: progress.progress_data.map(w => `Week ${w.week}`),
+                    datasets: [
+                        {
+                            label: 'Study Hours',
+                            data: progress.progress_data.map(w => w.study_hours),
+                            borderColor: '#007bff',
+                            backgroundColor: 'rgba(0,123,255,0.1)',
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Attendance %',
+                            data: progress.progress_data.map(w => w.attendance),
+                            borderColor: '#28a745',
+                            backgroundColor: 'rgba(40,167,69,0.1)',
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Improvement Score',
+                            data: progress.progress_data.map(w => w.improvement_score),
+                            borderColor: '#ffc107',
+                            backgroundColor: 'rgba(255,193,7,0.1)',
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            max: 10,
+                            grid: {
+                                drawOnChartArea: false,
+                            },
+                        },
+                    }
+                }
+            });
+        }
+        
+        async function generateStudyPlan() {
+            const studentName = document.getElementById('planStudentName').value;
+            const currentHours = parseFloat(document.getElementById('currentHours').value);
+            const currentAttendance = parseFloat(document.getElementById('currentAttendance').value);
+            const targetGrade = document.getElementById('targetGrade').value;
+            
+            // Get selected days
+            const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+            const availableDays = days.filter(day => document.getElementById(day).checked);
+            
+            // Get selected times
+            const times = ['morning', 'afternoon', 'evening'];
+            const preferredTimes = times.filter(time => document.getElementById(time).checked);
+            
+            const request = {
+                student_name: studentName,
+                current_hours: currentHours,
+                current_attendance: currentAttendance,
+                target_grade: targetGrade,
+                available_days: availableDays,
+                preferred_times: preferredTimes
+            };
+            
+            const response = await fetch('/generate-study-plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+            
+            const studyPlan = await response.json();
+            const resultDiv = document.getElementById('study-plan-result');
+            
+            let planHtml = `
+                <h3>📚 Personalized Study Plan for ${studyPlan.student_name}</h3>
+                <p><strong>Target Grade:</strong> ${studyPlan.target_grade}</p>
+                <p><strong>Recommended Weekly Hours:</strong> ${studyPlan.recommended_hours}</p>
+                <p><strong>Target Attendance:</strong> ${studyPlan.target_attendance}%</p>
+                <p><strong>Plan Duration:</strong> ${studyPlan.plan_duration} weeks</p>
                 
-                const data = await response.json();
-                
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'result info';
-                resultDiv.innerHTML = `
-                    <h3>📈 Progress Report: ${data.student_name}</h3>
-                    <p><strong>Tracking Period:</strong> ${data.tracking_weeks} weeks</p>
-                    <p><strong>Overall Trend:</strong> <span style="color: ${
-                        data.overall_trend === 'Improving' ? '#28a745' : 
-                        data.overall_trend === 'Declining' ? '#dc3545' : '#ffc107'
-                    };">${data.overall_trend}</span></p>
-                    
-                    <h4>Weekly Progress</h4>
-                    <table class="prediction-table">
-                        <thead>
-                            <tr>
-                                <th>Week</th>
-                                <th>Study Hours</th>
-                                <th>Attendance</th>
-                                <th>Prediction</th>
-                                <th>Confidence</th>
-                                <th>Improvement Score</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${data.progress_data.map(week => `
-                                <tr>
-                                    <td>${week.week}</td>
-                                    <td>${week.study_hours.toFixed(1)}h</td>
-                                    <td>${week.attendance.toFixed(1)}%</td>
-                                    <td style="color: ${week.prediction === 'Pass' ? '#28a745' : '#dc3545'}; font-weight: bold;">
-                                        ${week.prediction}
-                                    </td>
-                                    <td>${(week.confidence * 100).toFixed(1)}%</td>
-                                    <td>
-                                        <div style="background: #e9ecef; border-radius: 10px; height: 10px; width: 100px; margin: 5px 0;">
-                                            <div style="background: linear-gradient(90deg, #dc3545, #ffc107, #28a745); 
-                                                        width: ${week.improvement_score * 10}%; 
-                                                        height: 100%; 
-                                                        border-radius: 10px;"></div>
-                                        </div>
-                                        ${week.improvement_score.toFixed(1)}/10
-                                    </td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    
-                    <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 8px;">
-                        <h5>📋 Progress Summary</h5>
-                        <p><strong>Generated:</strong> ${new Date(data.generated_at).toLocaleString()}</p>
-                        <p><strong>Recommendation:</strong> ${
-                            data.overall_trend === 'Improving' ? 
-                            'Great progress! Continue with current study habits.' :
-                            data.overall_trend === 'Declining' ?
-                            'Consider adjusting study strategies and seeking academic support.' :
-                            'Maintain consistency and look for areas of improvement.'
-                        }</p>
+                <h4>📅 Weekly Study Schedule</h4>
+            `;
+            
+            studyPlan.weekly_schedule.forEach(day => {
+                planHtml += `
+                    <div class="schedule-day">
+                        <h5>${day.day}</h5>
+                        ${day.study_blocks.map(block => `
+                            <div class="study-block">
+                                <strong>${block.time}</strong>: ${block.subject} - ${block.activity}
+                                <br><small>Duration: ${block.duration} hours</small>
+                            </div>
+                        `).join('')}
                     </div>
                 `;
+            });
+            
+            planHtml += `
+                <h4>💡 Study Recommendations</h4>
+                ${studyPlan.recommendations.map(rec => `
+                    <div class="recommendation-item">
+                        ${rec}
+                    </div>
+                `).join('')}
                 
-                resultDiv.scrollIntoView({behavior: 'smooth'});
-            } catch (error) {
-                resultDiv.style.display = 'block';
-                resultDiv.className = 'result fail';
-                resultDiv.innerHTML = `<p>❌ Error tracking progress: ${error.message}</p>`;
-            }
+                <h4>🎯 Expected Outcomes</h4>
+                <p>${studyPlan.expected_outcomes}</p>
+                
+                <p><em>Generated on: ${new Date(studyPlan.generated_at).toLocaleString()}</em></p>
+            `;
+            
+            resultDiv.innerHTML = planHtml;
+            resultDiv.className = 'result success';
+            resultDiv.style.display = 'block';
         }
-
-        // Placeholder functions for other features
-        async function showAnalytics() {
-            alert('Analytics feature would be implemented here');
-        }
-
-        async function showDatabaseAnalytics() {
-            alert('Database Analytics feature would be implemented here');
-        }
-
-        async function showTips() {
-            alert('Success Tips feature would be implemented here');
-        }
-
-        async function showModelInfo() {
-            alert('Model Info feature would be implemented here');
-        }
-
-        async function loadTrendsDashboard() {
-            alert('Trends Dashboard feature would be implemented here');
-        }
-
-        async function showAllPredictions() {
-            alert('View All Predictions feature would be implemented here');
-        }
-
+        
+        // Initialize the first tab as active
+        document.getElementById('mock-dashboard').style.display = 'block';
     </script>
 </body>
 </html>"#;
 
-    HttpResponse::Ok().content_type("text/html").body(html_content)
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(html_content)
 }
 
-// Add database to start_api function
-async fn start_api(
-    model: TrainedModel,
-    model_info: ModelInfo,
-    db: Database,
-) -> std::io::Result<()> {
-    let model_data = web::Data::new(model);
-    let info_data = web::Data::new(model_info);
-    let db_data = web::Data::new(db);
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    // Initialize the ML model
+    let model_info = train_model();
+    let trained_model = TrainedModel::new(); // Fixed: removed the argument
+    
+    // Initialize database
+    let database = Database::new().await
+        .expect("Failed to initialize database");
+    
+    // Create application data
+    let model_data = web::Data::new(model_info);
+    let trained_model_data = web::Data::new(trained_model);
+    let db_data = web::Data::new(database);
+    
+    println!("🚀 Starting TUK Student Classifier Server at http://localhost:8080");
+    println!("📊 Student Performance Analytics Dashboard ready!");
+    println!("🎓 Study Plan Generator feature activated!");
     
     HttpServer::new(move || {
         App::new()
             .app_data(model_data.clone())
-            .app_data(info_data.clone())
+            .app_data(trained_model_data.clone())
             .app_data(db_data.clone())
             .route("/", web::get().to(serve_homepage))
             .route("/predict", web::post().to(predict))
             .route("/batch-predict", web::post().to(batch_predict))
-            .route("/model/info", web::get().to(get_model_info))
-            .route("/health", web::get().to(health_check))
             .route("/analytics", web::get().to(get_analytics))
             .route("/database-analytics", web::get().to(get_database_analytics))
-            .route("/real-trends-dashboard", web::get().to(get_real_trends_dashboard))
-            .route("/all-predictions", web::get().to(get_all_predictions))
-            .route("/save-model-version", web::post().to(save_model_version))
-            .route("/tips", web::get().to(get_success_tips))
+            .route("/success-tips", web::get().to(get_success_tips))
+            .route("/model-info", web::get().to(get_model_info))
+            .route("/health", web::get().to(health_check))
             .route("/student-trends", web::post().to(get_student_trends))
             .route("/class-trends", web::get().to(get_class_trends))
             .route("/trends-dashboard", web::get().to(get_trends_dashboard))
+            .route("/real-trends-dashboard", web::get().to(get_real_trends_dashboard))
+            .route("/all-predictions", web::get().to(get_all_predictions))
+            .route("/save-model-version", web::post().to(save_model_version))
             .route("/track-progress", web::post().to(track_student_progress))
+            .route("/generate-study-plan", web::post().to(generate_study_plan))
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind("127.0.0.1:8080")?
     .run()
     .await
-}
-
-#[actix_web::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    println!("🚀 Starting TUK Student Classifier...");
-    
-    // Initialize database
-    println!("🗃️ Initializing database...");
-    let db = Database::new().await?;
-    println!("✅ Database initialized successfully!");
-
-    // Train model (simple rule-based)
-    println!("🤖 Training student performance model...");
-    let (model, accuracy) = train_model()?;
-    println!("🎯 Model trained successfully! Accuracy: {:.2}%", accuracy * 100.0);
-
-    let model_info = ModelInfo { accuracy };
-
-    // Save model version to database
-    let model_version = ModelVersion {
-        id: 0,
-        version: "1.0.0".to_string(),
-        accuracy,
-        features_used: "study_hours,attendance".to_string(),
-        created_at: chrono::Utc::now(),
-    };
-    
-    if let Err(e) = db.save_model_version(&model_version).await {
-        eprintln!("Warning: Failed to save model version: {}", e);
-    } else {
-        println!("✅ Model version saved to database");
-    }
-
-    println!("🌐 Starting TUK Student Predictor API on http://127.0.0.1:8080");
-    println!("   Visit http://127.0.0.1:8080 in your browser!");
-    println!("   Features: Real Database Analytics & Rule-based Predictions");
-    
-    start_api(model, model_info, db).await?;
-
-    Ok(())
 }
