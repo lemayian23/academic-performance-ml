@@ -2,6 +2,7 @@ mod data;
 mod model;
 mod analytics;
 mod database;
+mod gamification;
 
 use actix_web::{web, App, HttpResponse, HttpServer};
 use serde::Deserialize;
@@ -11,6 +12,10 @@ use crate::model::{train_model, ModelInfo, PredictResponse, AnalyticsData, Perfo
                    StudentRecord as ModelStudentRecord, TrainedModel, StudyPlanRequest};
 use crate::analytics::{TrendsAnalyzer, generate_mock_trends_data};
 use crate::database::{Database, StudentRecord as DbStudentRecord, ModelVersion};
+use crate::gamification::{
+    GamificationEngine, StudySessionRequest, StudentProfile, LeaderboardEntry,
+    GamificationResponse, get_mock_leaderboard, get_mock_profile
+};
 
 #[derive(Deserialize)]
 struct PredictRequest {
@@ -143,7 +148,7 @@ fn analyze_progress_trend(progress_data: &[serde_json::Value]) -> String {
     }
 }
 
-// NEW: Study Plan Generator endpoint
+// Study Plan Generator endpoint
 async fn generate_study_plan(
     web::Json(req): web::Json<StudyPlanRequest>,
     model: web::Data<TrainedModel>,
@@ -378,7 +383,60 @@ async fn get_success_tips() -> HttpResponse {
     HttpResponse::Ok().json(tips)
 }
 
-// Homepage endpoint with complete HTML including Study Plan Generator
+// Gamification endpoints
+async fn record_study_session(
+    web::Json(req): web::Json<StudySessionRequest>,
+    gamification: web::Data<GamificationEngine>,
+) -> HttpResponse {
+    let points_earned = gamification.calculate_points(&req);
+    
+    // In a real app, you'd save this to a database
+    let mock_profile = get_mock_profile(&req.student_name);
+    let new_badges = gamification.check_badges(&mock_profile, &req);
+    let new_achievements = gamification.check_achievements(&mock_profile, &req);
+    let new_streak = gamification.update_streak(&mock_profile, &req);
+    let new_level = gamification.calculate_level(mock_profile.total_points + points_earned);
+    let level_up = new_level > mock_profile.level;
+
+    let response = GamificationResponse {
+        profile: mock_profile,
+        points_earned,
+        level_up,
+        new_badges,
+        new_achievements,
+        leaderboard_position: 3, // Mock position
+    };
+
+    HttpResponse::Ok().json(response)
+}
+
+async fn get_leaderboard() -> HttpResponse {
+    let leaderboard = get_mock_leaderboard();
+    HttpResponse::Ok().json(leaderboard)
+}
+
+async fn get_student_profile(
+    web::Path(student_name): web::Path<String>,
+) -> HttpResponse {
+    let profile = get_mock_profile(&student_name);
+    HttpResponse::Ok().json(profile)
+}
+
+async fn get_achievements(
+    web::Path(student_name): web::Path<String>,
+) -> HttpResponse {
+    let profile = get_mock_profile(&student_name);
+    HttpResponse::Ok().json(profile.achievements)
+}
+
+async fn get_badges(
+    web::Path(student_name): web::Path<String>,
+) -> HttpResponse {
+    let profile = get_mock_profile(&student_name);
+    HttpResponse::Ok().json(profile.badges)
+}
+
+// Homepage endpoint with complete HTML including all features
 async fn serve_homepage() -> HttpResponse {
     let html_content = r#"<!DOCTYPE html>
 <html lang="en">
@@ -579,6 +637,14 @@ async fn serve_homepage() -> HttpResponse {
             border: 2px solid #e83e8c;
         }
 
+        .gamification-section {
+            background: linear-gradient(135deg, #ffd700, #ff6b6b);
+            padding: 25px;
+            border-radius: 12px;
+            margin: 25px 0;
+            border: 2px solid #ff8c00;
+        }
+
         .prediction-table {
             width: 100%;
             border-collapse: collapse;
@@ -745,6 +811,24 @@ async fn serve_homepage() -> HttpResponse {
             border-radius: 8px;
             border-left: 3px solid #ffc107;
         }
+
+        .badge-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            border-left: 4px solid gold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .achievement-item {
+            background: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            border-left: 4px solid #28a745;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
@@ -782,7 +866,54 @@ async fn serve_homepage() -> HttpResponse {
             <button onclick="showAllPredictions()" style="background: #6f42c1;">🗃️ View All Predictions</button>
         </div>
 
-        <!-- NEW: Study Plan Generator Section -->
+        <!-- Gamification Section -->
+        <div class="gamification-section">
+            <h3 style="color: #8b4513; margin-top: 0;">🎮 Study Gamification System</h3>
+            <p>Earn points, badges, and climb the leaderboard by studying consistently!</p>
+            
+            <div class="form-group">
+                <label for="sessionStudentName">👨‍🎓 Student Name:</label>
+                <input type="text" id="sessionStudentName" placeholder="e.g., Denis Lemayian" value="Denis Lemayian">
+            </div>
+            
+            <div class="form-group">
+                <label for="sessionDuration">⏱️ Study Duration (hours):</label>
+                <input type="number" id="sessionDuration" step="0.1" placeholder="e.g., 2.5" value="2.5" min="0.5" max="12">
+            </div>
+            
+            <div class="form-group">
+                <label for="sessionSubjects">📚 Subjects Studied (comma-separated):</label>
+                <input type="text" id="sessionSubjects" placeholder="e.g., Mathematics, Programming" value="Mathematics, Programming">
+            </div>
+            
+            <div class="form-group">
+                <label for="focusScore">🎯 Focus Score (0-100%):</label>
+                <input type="number" id="focusScore" step="1" placeholder="e.g., 85" value="85" min="0" max="100">
+            </div>
+            
+            <div class="checkbox-item">
+                <input type="checkbox" id="attendanceToday" checked>
+                <label for="attendanceToday">✅ Attended classes today</label>
+            </div>
+            
+            <div style="text-align: center; margin-top: 20px;">
+                <button onclick="recordStudySession()" style="background: linear-gradient(135deg, #ff8c00, #ff6347); font-size: 18px; padding: 18px 36px;">
+                    🎮 Record Study Session
+                </button>
+                <button onclick="showLeaderboard()" style="background: linear-gradient(135deg, #9370db, #8a2be2);">
+                    🏆 View Leaderboard
+                </button>
+                <button onclick="showMyProfile()" style="background: linear-gradient(135deg, #20b2aa, #008080);">
+                    👤 My Profile
+                </button>
+            </div>
+            
+            <div id="gamification-result" class="result" style="display: none;"></div>
+            <div id="leaderboard-result" class="result" style="display: none;"></div>
+            <div id="profile-result" class="result" style="display: none;"></div>
+        </div>
+
+        <!-- Study Plan Generator Section -->
         <div class="study-plan-section">
             <h3 style="color: #e83e8c; margin-top: 0;">📚 Personalized Study Plan Generator</h3>
             <p>Create a customized study schedule based on your academic goals:</p>
@@ -1593,6 +1724,163 @@ David Lemoita,7.5,88.0" rows="8"></textarea>
             resultDiv.className = 'result success';
             resultDiv.style.display = 'block';
         }
+
+        // Gamification functions
+        async function recordStudySession() {
+            const studentName = document.getElementById('sessionStudentName').value;
+            const duration = parseFloat(document.getElementById('sessionDuration').value);
+            const subjects = document.getElementById('sessionSubjects').value.split(',').map(s => s.trim());
+            const focusScore = parseInt(document.getElementById('focusScore').value) / 100.0;
+            const attendanceToday = document.getElementById('attendanceToday').checked;
+
+            const request = {
+                student_name: studentName,
+                duration_hours: duration,
+                subjects: subjects,
+                focus_score: focusScore,
+                attendance_today: attendanceToday
+            };
+
+            const response = await fetch('/record-session', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request)
+            });
+
+            const result = await response.json();
+            const resultDiv = document.getElementById('gamification-result');
+            
+            let html = `
+                <h3>🎉 Study Session Recorded!</h3>
+                <div class="metric-card">
+                    <h4>Points Earned</h4>
+                    <div class="metric-value" style="color: #ff8c00;">+${result.points_earned}</div>
+                </div>
+                
+                <p><strong>Total Points:</strong> ${result.profile.total_points + result.points_earned}</p>
+                <p><strong>Level:</strong> ${result.profile.level} ${result.level_up ? '🎊 LEVEL UP!' : ''}</p>
+                <p><strong>Current Streak:</strong> ${result.profile.current_streak} days 🔥</p>
+                <p><strong>Leaderboard Position:</strong> #${result.leaderboard_position}</p>
+            `;
+
+            if (result.new_badges.length > 0) {
+                html += `<h4>🏅 New Badges Earned:</h4>`;
+                result.new_badges.forEach(badge => {
+                    html += `
+                        <div class="badge-item">
+                            <strong>${badge.icon} ${badge.name}</strong> - ${badge.description}
+                            <br><small>Rarity: ${badge.rarity}</small>
+                        </div>
+                    `;
+                });
+            }
+
+            if (result.new_achievements.length > 0) {
+                html += `<h4>⭐ New Achievements Unlocked:</h4>`;
+                result.new_achievements.forEach(achievement => {
+                    html += `
+                        <div class="achievement-item">
+                            <strong>${achievement.name}</strong> - ${achievement.description}
+                            <br><small>+${achievement.points} points</small>
+                        </div>
+                    `;
+                });
+            }
+
+            resultDiv.innerHTML = html;
+            resultDiv.className = 'result success';
+            resultDiv.style.display = 'block';
+        }
+
+        async function showLeaderboard() {
+            const response = await fetch('/leaderboard');
+            const leaderboard = await response.json();
+            
+            const resultDiv = document.getElementById('leaderboard-result');
+            
+            let tableHtml = `
+                <h3>🏆 Study Leaderboard</h3>
+                <table class="prediction-table">
+                    <thead>
+                        <tr>
+                            <th>Rank</th>
+                            <th>Student</th>
+                            <th>Points</th>
+                            <th>Level</th>
+                            <th>Badges</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            
+            leaderboard.forEach(entry => {
+                const rankClass = entry.rank <= 3 ? `style="background: ${entry.rank === 1 ? '#ffd700' : entry.rank === 2 ? '#c0c0c0' : '#cd7f32'};"` : '';
+                tableHtml += `
+                    <tr ${rankClass}>
+                        <td>${entry.rank}</td>
+                        <td>${entry.student_name}</td>
+                        <td>${entry.total_points}</td>
+                        <td>${entry.level}</td>
+                        <td>${entry.badge_count} 🏅</td>
+                    </tr>
+                `;
+            });
+            
+            tableHtml += '</tbody></table>';
+            resultDiv.innerHTML = tableHtml;
+            resultDiv.className = 'result info';
+            resultDiv.style.display = 'block';
+        }
+
+        async function showMyProfile() {
+            const studentName = document.getElementById('sessionStudentName').value;
+            
+            const response = await fetch('/profile/' + encodeURIComponent(studentName));
+            const profile = await response.json();
+            
+            const resultDiv = document.getElementById('profile-result');
+            
+            let html = `
+                <h3>👤 Student Profile: ${profile.student_name}</h3>
+                <div class="chart-grid">
+                    <div class="metric-card">
+                        <h4>Total Points</h4>
+                        <div class="metric-value" style="color: #ff8c00;">${profile.total_points}</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Level</h4>
+                        <div class="metric-value" style="color: #28a745;">${profile.level}</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Current Streak</h4>
+                        <div class="metric-value" style="color: #dc3545;">${profile.current_streak} days</div>
+                    </div>
+                    <div class="metric-card">
+                        <h4>Badges</h4>
+                        <div class="metric-value" style="color: #6f42c1;">${profile.badges.length}</div>
+                    </div>
+                </div>
+                
+                <h4>🏅 Badges Earned</h4>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+            `;
+            
+            profile.badges.forEach(badge => {
+                html += `
+                    <div style="background: white; padding: 15px; border-radius: 10px; text-align: center; min-width: 120px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <div style="font-size: 2em;">${badge.icon}</div>
+                        <strong>${badge.name}</strong>
+                        <br><small style="color: #666;">${badge.rarity}</small>
+                    </div>
+                `;
+            });
+            
+            html += `</div>`;
+            
+            resultDiv.innerHTML = html;
+            resultDiv.className = 'result info';
+            resultDiv.style.display = 'block';
+        }
         
         // Initialize the first tab as active
         document.getElementById('mock-dashboard').style.display = 'block';
@@ -1615,20 +1903,26 @@ async fn main() -> std::io::Result<()> {
     let database = Database::new().await
         .expect("Failed to initialize database");
     
+    // Initialize gamification engine
+    let gamification_engine = GamificationEngine::new();
+    
     // Create application data
     let model_data = web::Data::new(model_info);
     let trained_model_data = web::Data::new(trained_model);
     let db_data = web::Data::new(database);
+    let gamification_data = web::Data::new(gamification_engine);
     
     println!("🚀 Starting TUK Student Classifier Server at http://localhost:8080");
     println!("📊 Student Performance Analytics Dashboard ready!");
     println!("🎓 Study Plan Generator feature activated!");
+    println!("🎮 Gamification System activated!");
     
     HttpServer::new(move || {
         App::new()
             .app_data(model_data.clone())
             .app_data(trained_model_data.clone())
             .app_data(db_data.clone())
+            .app_data(gamification_data.clone())
             .route("/", web::get().to(serve_homepage))
             .route("/predict", web::post().to(predict))
             .route("/batch-predict", web::post().to(batch_predict))
@@ -1645,6 +1939,12 @@ async fn main() -> std::io::Result<()> {
             .route("/save-model-version", web::post().to(save_model_version))
             .route("/track-progress", web::post().to(track_student_progress))
             .route("/generate-study-plan", web::post().to(generate_study_plan))
+            // NEW: Gamification endpoints
+            .route("/record-session", web::post().to(record_study_session))
+            .route("/leaderboard", web::get().to(get_leaderboard))
+            .route("/profile/{student_name}", web::get().to(get_student_profile))
+            .route("/achievements/{student_name}", web::get().to(get_achievements))
+            .route("/badges/{student_name}", web::get().to(get_badges))
     })
     .bind("127.0.0.1:8080")?
     .run()

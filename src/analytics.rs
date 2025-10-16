@@ -7,7 +7,7 @@ pub struct StudentTrend {
     pub weekly_data: Vec<WeekData>,
     pub overall_trend: String,
     pub improvement_score: f64,
-    pub chart_data: ChartData, 
+    pub chart_data: ChartData,
 }
 
 #[derive(Serialize, Clone)]
@@ -26,7 +26,7 @@ pub struct ClassTrends {
     pub top_performers: Vec<String>,
     pub at_risk_students: Vec<String>,
     pub average_improvement: f64,
-    pub chart_data: ClassChartData, 
+    pub chart_data: ClassChartData,
 }
 
 #[derive(Serialize, Clone)]
@@ -38,7 +38,7 @@ pub struct WeekSummary {
     pub total_predictions: usize,
 }
 
-// NEW: Chart data structures
+// Chart data structures
 #[derive(Serialize, Clone)]
 pub struct ChartData {
     pub labels: Vec<String>,
@@ -92,7 +92,7 @@ impl TrendsAnalyzer {
         let improvement_score = self.calculate_improvement_score(&weekly_data);
         let overall_trend = self.determine_trend(&weekly_data);
         
-        // NEW: Generate chart data
+        // Generate chart data
         let chart_data = self.generate_student_chart_data(&weekly_data);
 
         StudentTrend {
@@ -162,7 +162,7 @@ impl TrendsAnalyzer {
 
         let average_improvement = self.calculate_average_improvement(&weekly_summaries);
         
-        // NEW: Generate class chart data
+        // Generate class chart data
         let chart_data = self.generate_class_chart_data(&weekly_summaries, &student_trends);
 
         ClassTrends {
@@ -175,7 +175,7 @@ impl TrendsAnalyzer {
         }
     }
 
-    // NEW: Generate student chart data
+    // Generate student chart data
     fn generate_student_chart_data(&self, weekly_data: &[WeekData]) -> ChartData {
         let labels: Vec<String> = weekly_data.iter().map(|wd| format!("Week {}", wd.week)).collect();
         let study_hours: Vec<f64> = weekly_data.iter().map(|wd| wd.study_hours).collect();
@@ -192,7 +192,7 @@ impl TrendsAnalyzer {
         }
     }
 
-    // NEW: Generate class chart data
+    // Generate class chart data
     fn generate_class_chart_data(&self, weekly_summaries: &[WeekSummary], student_trends: &HashMap<String, Vec<(f64, f64)>>) -> ClassChartData {
         let weeks: Vec<String> = weekly_summaries.iter().map(|ws| format!("Week {}", ws.week)).collect();
         let avg_study_hours: Vec<f64> = weekly_summaries.iter().map(|ws| ws.avg_study_hours).collect();
@@ -263,15 +263,15 @@ pub fn generate_mock_trends_data() -> HashMap<String, Vec<(f64, f64)>> {
     let mut data = HashMap::new();
     
     let students = vec![
-        ("Denis Lemayian", vec![(4.5, 70.0), (5.0, 75.0), (5.5, 80.0), (6.0, 85.0)]),
-        ("Saitoti Smith", vec![(6.0, 85.0), (6.5, 88.0), (7.0, 90.0), (7.5, 92.0)]),
-        ("Kukutia Johnson", vec![(3.0, 60.0), (3.5, 65.0), (4.0, 70.0), (4.5, 72.0)]),
-        ("Kirionki Williams", vec![(5.5, 78.0), (5.0, 75.0), (4.5, 72.0), (4.0, 68.0)]),
-        ("David Lemoita", vec![(7.0, 88.0), (7.5, 90.0), (8.0, 92.0), (8.5, 94.0)]),
+        ("Denis Lemayian".to_string(), vec![(4.5, 70.0), (5.0, 75.0), (5.5, 80.0), (6.0, 85.0)]),
+        ("Saitoti Smith".to_string(), vec![(6.0, 85.0), (6.5, 88.0), (7.0, 90.0), (7.5, 92.0)]),
+        ("Kukutia Johnson".to_string(), vec![(3.0, 60.0), (3.5, 65.0), (4.0, 70.0), (4.5, 72.0)]),
+        ("Kirionki Williams".to_string(), vec![(5.5, 78.0), (5.0, 75.0), (4.5, 72.0), (4.0, 68.0)]),
+        ("David Lemoita".to_string(), vec![(7.0, 88.0), (7.5, 90.0), (8.0, 92.0), (8.5, 94.0)]),
     ];
 
     for (name, weekly_data) in students {
-        data.insert(name.to_string(), weekly_data);
+        data.insert(name, weekly_data);
     }
 
     data
