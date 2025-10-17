@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{sqlite::SqlitePool, Pool, Sqlite};
+use sqlx::{sqlite::SqlitePool, Pool, Sqlite, Row}; // ADDED: Row import
 use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -115,8 +115,8 @@ impl Database {
     }
 
     pub async fn get_all_predictions(&self) -> Result<Vec<StudentRecord>, sqlx::Error> {
-        let predictions = sqlx::query_as!(
-            StudentRecord,
+        // Use query instead of query_as! to avoid macro issues
+        let rows = sqlx::query(
             r#"
             SELECT id, name, study_hours, attendance, predicted_pass, confidence, created_at
             FROM predictions
@@ -126,11 +126,25 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
 
+        let mut predictions = Vec::new();
+        for row in rows {
+            predictions.push(StudentRecord {
+                id: row.get("id"),
+                name: row.get("name"),
+                study_hours: row.get("study_hours"),
+                attendance: row.get("attendance"),
+                predicted_pass: row.get("predicted_pass"),
+                confidence: row.get("confidence"),
+                created_at: row.get("created_at"),
+            });
+        }
+
         Ok(predictions)
     }
 
     pub async fn get_class_statistics(&self) -> Result<ClassStatistics, sqlx::Error> {
-        let stats = sqlx::query!(
+        // Use query instead of query! to avoid macro issues
+        let row = sqlx::query(
             r#"
             SELECT 
                 COUNT(*) as total_students,
@@ -144,10 +158,10 @@ impl Database {
         .await?;
 
         Ok(ClassStatistics {
-            total_students: stats.total_students.unwrap_or(0),
-            avg_study_hours: stats.avg_study_hours.unwrap_or(0.0),
-            avg_attendance: stats.avg_attendance.unwrap_or(0.0),
-            pass_rate: stats.pass_rate.unwrap_or(0.0),
+            total_students: row.get::<i64, _>("total_students"),
+            avg_study_hours: row.get::<Option<f64>, _>("avg_study_hours").unwrap_or(0.0),
+            avg_attendance: row.get::<Option<f64>, _>("avg_attendance").unwrap_or(0.0),
+            pass_rate: row.get::<Option<f64>, _>("pass_rate").unwrap_or(0.0),
         })
     }
 

@@ -13,7 +13,7 @@ use crate::model::{train_model, ModelInfo, PredictResponse, AnalyticsData, Perfo
 use crate::analytics::{TrendsAnalyzer, generate_mock_trends_data};
 use crate::database::{Database, StudentRecord as DbStudentRecord, ModelVersion};
 use crate::gamification::{
-    GamificationEngine, StudySessionRequest, StudentProfile, LeaderboardEntry,
+    GamificationEngine, StudySessionRequest, 
     GamificationResponse, get_mock_leaderboard, get_mock_profile
 };
 
@@ -46,7 +46,7 @@ struct ProgressRequest {
 
 // Student trends endpoint
 async fn get_student_trends(
-    web::Json(req): web::Json<StudentTrendsRequest>,
+    req: web::Json<StudentTrendsRequest>,
 ) -> HttpResponse {
     let analyzer = TrendsAnalyzer::new();
     
@@ -91,7 +91,7 @@ async fn get_trends_dashboard() -> HttpResponse {
 
 // Student progress tracking endpoint
 async fn track_student_progress(
-    web::Json(req): web::Json<ProgressRequest>,
+    req: web::Json<ProgressRequest>,
     model: web::Data<TrainedModel>,
 ) -> HttpResponse {
     let mut progress_data = Vec::new();
@@ -150,7 +150,7 @@ fn analyze_progress_trend(progress_data: &[serde_json::Value]) -> String {
 
 // Study Plan Generator endpoint
 async fn generate_study_plan(
-    web::Json(req): web::Json<StudyPlanRequest>,
+    req: web::Json<StudyPlanRequest>,
     model: web::Data<TrainedModel>,
 ) -> HttpResponse {
     let study_plan = model.generate_study_plan(&req);
@@ -191,11 +191,11 @@ async fn predict(
 
 // Batch prediction endpoint with database
 async fn batch_predict(
-    web::Json(students): web::Json<Vec<ModelStudentRecord>>,
+    students: web::Json<Vec<ModelStudentRecord>>,
     model: web::Data<TrainedModel>,
     db: web::Data<Database>,
 ) -> HttpResponse {
-    let batch_result = model.batch_predict(students);
+    let batch_result = model.batch_predict(students.into_inner());
     
     // Save batch predictions to database
     for student in &batch_result.predictions {
@@ -385,7 +385,7 @@ async fn get_success_tips() -> HttpResponse {
 
 // Gamification endpoints
 async fn record_study_session(
-    web::Json(req): web::Json<StudySessionRequest>,
+    req: web::Json<StudySessionRequest>,
     gamification: web::Data<GamificationEngine>,
 ) -> HttpResponse {
     let points_earned = gamification.calculate_points(&req);
@@ -394,7 +394,7 @@ async fn record_study_session(
     let mock_profile = get_mock_profile(&req.student_name);
     let new_badges = gamification.check_badges(&mock_profile, &req);
     let new_achievements = gamification.check_achievements(&mock_profile, &req);
-    let new_streak = gamification.update_streak(&mock_profile, &req);
+    let _new_streak = gamification.update_streak(&mock_profile, &req);
     let new_level = gamification.calculate_level(mock_profile.total_points + points_earned);
     let level_up = new_level > mock_profile.level;
 
@@ -416,22 +416,25 @@ async fn get_leaderboard() -> HttpResponse {
 }
 
 async fn get_student_profile(
-    web::Path(student_name): web::Path<String>,
+    path: web::Path<String>,
 ) -> HttpResponse {
+    let student_name = path.into_inner();
     let profile = get_mock_profile(&student_name);
     HttpResponse::Ok().json(profile)
 }
 
 async fn get_achievements(
-    web::Path(student_name): web::Path<String>,
+    path: web::Path<String>,
 ) -> HttpResponse {
+    let student_name = path.into_inner();
     let profile = get_mock_profile(&student_name);
     HttpResponse::Ok().json(profile.achievements)
 }
 
 async fn get_badges(
-    web::Path(student_name): web::Path<String>,
+    path: web::Path<String>,
 ) -> HttpResponse {
+    let student_name = path.into_inner();
     let profile = get_mock_profile(&student_name);
     HttpResponse::Ok().json(profile.badges)
 }

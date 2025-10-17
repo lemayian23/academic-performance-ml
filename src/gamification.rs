@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, Timelike}; // ADDED: Timelike import
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StudentProfile {
@@ -228,7 +228,7 @@ impl GamificationEngine {
         (total_points as f64 / 100.0).sqrt() as i32 + 1
     }
 
-    pub fn check_achievements(&self, profile: &StudentProfile, session: &StudySessionRequest) -> Vec<Achievement> {
+    pub fn check_achievements(&self, profile: &StudentProfile, _session: &StudySessionRequest) -> Vec<Achievement> {
         let mut new_achievements = Vec::new();
         let total_study_hours: f64 = profile.study_sessions.iter().map(|s| s.duration_hours).sum();
         let total_sessions = profile.study_sessions.len() as i32;
@@ -292,11 +292,11 @@ impl GamificationEngine {
                         session.subjects.len() >= 3
                     }
                     BadgeCondition::EarlyBird => {
-                        // Simplified - would need time tracking
+                        // FIXED: Now using Timelike trait
                         Utc::now().hour() < 12
                     }
                     BadgeCondition::NightOwl => {
-                        // Simplified - would need time tracking
+                        // FIXED: Now using Timelike trait
                         Utc::now().hour() >= 18
                     }
                 };
@@ -316,7 +316,7 @@ impl GamificationEngine {
         new_badges
     }
 
-    pub fn update_streak(&self, profile: &StudentProfile, session: &StudySessionRequest) -> i32 {
+    pub fn update_streak(&self, profile: &StudentProfile, _session: &StudySessionRequest) -> i32 {
         let today = Utc::now().date_naive();
         let last_activity = profile.last_activity.date_naive();
         

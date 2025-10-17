@@ -408,7 +408,7 @@ impl TrainedModel {
     }
 
     fn calculate_expected_outcomes(&self, current_hours: f64, current_attendance: f64, target_hours: f64, target_attendance: f64, target_grade: &str) -> String {
-        let improvement_potential = ((target_hours - current_hours) + (target_attendance - current_attendance)) / 2.0;
+        let _improvement_potential = ((target_hours - current_hours) + (target_attendance - current_attendance)) / 2.0; // Prefix with underscore to fix warning
         
         match target_grade {
             "A" => format!(
